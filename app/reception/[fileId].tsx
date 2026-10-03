@@ -7,10 +7,11 @@ import {
   Modal,
   StatusBar,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { ScanLine, CheckCircle2, CheckCircle, AlertCircle } from 'lucide-react-native';
+import { ScanLine, CheckCircle2, CheckCircle, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { ToastMessage, useToast } from '@/components/ToastMessage';
@@ -27,11 +28,30 @@ interface PkgGroup {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function groupByPkgId(items: SupplierItem[]): PkgGroup[] {
+function detectPkgColumn(items: SupplierItem[]): string | null {
+  if (items.length === 0) return null;
+  const keys = Object.keys(items[0].original_data ?? {});
+  // Priority 1: exact pkgid
+  const exact = keys.find(k => k.toLowerCase() === 'pkgid');
+  if (exact) return exact;
+  // Priority 2: contains pkg
+  const pkg = keys.find(k => k.toLowerCase().includes('pkg'));
+  if (pkg) return pkg;
+  // Priority 3: contains barcode/codice/code/id
+  const fallback = keys.find(k =>
+    k.toLowerCase().includes('barcode') ||
+    k.toLowerCase().includes('codice') ||
+    k.toLowerCase().includes('code') ||
+    k.toLowerCase().includes('id')
+  );
+  return fallback ?? null;
+}
+
+function groupByPkgId(items: SupplierItem[], column: string): PkgGroup[] {
   const map = new Map<string, SupplierItem[]>();
   for (const item of items) {
-    const raw = item.original_data?.PkgID ?? item.original_data?.pkgid ?? item.original_data?.PKGID ?? '';
-    const key = raw.trim() || '__NO_PKGID__';
+    const raw = item.original_data?.[column] ?? '';
+    const key = String(raw).trim() || '__NO_PKGID__';
     const existing = map.get(key) ?? [];
     existing.push(item);
     map.set(key, existing);
@@ -49,22 +69,18 @@ function groupByPkgId(items: SupplierItem[]): PkgGroup[] {
   return groups;
 }
 
-function hasPkgIdColumn(items: SupplierItem[]): boolean {
-  if (items.length === 0) return false;
-  const first = items[0].original_data ?? {};
-  return Object.keys(first).some(k => k.toLowerCase() === 'pkgid');
-}
-
 // ─── Scanner Overlay ─────────────────────────────────────────────────────────
 
 function ScannerModal({
   visible,
   onClose,
   onScanned,
+  columnName,
 }: {
   visible: boolean;
   onClose: () => void;
   onScanned: (code: string) => void;
+  columnName: string;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
   const debounceRef = useRef(false);
@@ -83,6 +99,8 @@ function ScannerModal({
   );
 
   if (!visible) return null;
+
+  const scanHintText = `Inquadra il barcode di ${columnName}`;
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent>
@@ -134,7 +152,7 @@ function ScannerModal({
               </View>
               {/* Bottom dark area */}
               <View style={styles.overlayBottom}>
-                <Text style={styles.scanHint}>Inquadra il barcode del PkgID</Text>
+                <Text style={styles.scanHint}>{scanHintText}</Text>
               </View>
             </View>
             {/* Close button */}
@@ -200,6 +218,38 @@ function PkgGroupCard({ group }: { group: PkgGroup }) {
   );
 }
 
+// ─── Column Picker ────────────────────────────────────────────────────────────
+
+function ColumnPicker({
+  columns,
+  onSelect,
+}: {
+  columns: string[];
+  onSelect: (col: string) => void;
+}) {
+  return (
+    <View style={styles.columnPickerCard}>
+      <Text style={styles.columnPickerTitle}>
+        Seleziona la colonna da usare come identificatore barcode
+      </Text>
+      {columns.map(col => (
+        <TouchableOpacity
+          key={col}
+          style={styles.columnPickerRow}
+          onPress={() => {
+            console.log('[Reception] Column selected:', col);
+            onSelect(col);
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.columnPickerRowText}>{col}</Text>
+          <ChevronRight size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ReceptionScreen() {
@@ -213,6 +263,7 @@ export default function ReceptionScreen() {
   const [markingComplete, setMarkingComplete] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [processingCode, setProcessingCode] = useState(false);
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -233,9 +284,14 @@ export default function ReceptionScreen() {
         throw itemsRes.error;
       }
 
-      console.log('[Reception] fetchData success, items:', itemsRes.data?.length);
+      const fetchedItems = (itemsRes.data ?? []) as SupplierItem[];
+      console.log('[Reception] fetchData success, items:', fetchedItems.length);
       setFile(fileRes.data as SupplierFile);
-      setItems((itemsRes.data ?? []) as SupplierItem[]);
+      setItems(fetchedItems);
+
+      const detected = detectPkgColumn(fetchedItems);
+      console.log('[Reception] Auto-detected column:', detected);
+      setSelectedColumn(detected);
     } catch (err) {
       console.error('[Reception] fetchData exception:', err);
     } finally {
@@ -252,28 +308,25 @@ export default function ReceptionScreen() {
   const handleScanned = useCallback(
     async (code: string) => {
       if (processingCode) return;
+      if (!selectedColumn) return;
       setProcessingCode(true);
-      console.log('[Reception] handleScanned start', { code, fileId });
+      console.log('[Reception] handleScanned start', { code, fileId, column: selectedColumn });
 
       try {
         const normalizedCode = code.trim().toLowerCase();
         const matched = items.filter(item => {
-          const pkgRaw =
-            item.original_data?.PkgID ??
-            item.original_data?.pkgid ??
-            item.original_data?.PKGID ??
-            '';
-          return pkgRaw.trim().toLowerCase() === normalizedCode;
+          const val = item.original_data?.[selectedColumn] ?? '';
+          return String(val).trim().toLowerCase() === normalizedCode;
         });
 
         if (matched.length === 0) {
           console.log('[Reception] No items found for code:', code);
-          showToast(`Nessun articolo trovato per PkgID: ${code}`, 'error');
+          showToast(`Nessun articolo trovato per ${selectedColumn}: ${code}`, 'error');
           setProcessingCode(false);
           return;
         }
 
-        console.log('[Reception] Found', matched.length, 'items for PkgID:', code);
+        console.log('[Reception] Found', matched.length, 'items for', selectedColumn, ':', code);
 
         // Ensure extra_columns has received / received_at
         const currentExtraColumns: string[] = file?.extra_columns ?? [];
@@ -310,12 +363,8 @@ export default function ReceptionScreen() {
         // Optimistic local update
         setItems(prev =>
           prev.map(item => {
-            const pkgRaw =
-              item.original_data?.PkgID ??
-              item.original_data?.pkgid ??
-              item.original_data?.PKGID ??
-              '';
-            if (pkgRaw.trim().toLowerCase() !== normalizedCode) return item;
+            const val = item.original_data?.[selectedColumn] ?? '';
+            if (String(val).trim().toLowerCase() !== normalizedCode) return item;
             return {
               ...item,
               status: 'processing' as const,
@@ -325,8 +374,8 @@ export default function ReceptionScreen() {
         );
 
         const countLabel = matched.length === 1 ? '1 articolo ricevuto' : `${matched.length} articoli ricevuti`;
-        showToast(`${countLabel} per PkgID: ${code}`, 'success');
-        console.log('[Reception] handleScanned success', { code, count: matched.length });
+        showToast(`${countLabel} per ${selectedColumn}: ${code}`, 'success');
+        console.log('[Reception] handleScanned success', { code, column: selectedColumn, count: matched.length });
       } catch (err: any) {
         console.error('[Reception] handleScanned error:', err);
         showToast(err?.message ?? 'Errore durante la scansione', 'error');
@@ -334,7 +383,7 @@ export default function ReceptionScreen() {
         setProcessingCode(false);
       }
     },
-    [items, file, fileId, processingCode, showToast],
+    [items, file, fileId, processingCode, selectedColumn, showToast],
   );
 
   // ── Mark complete ──────────────────────────────────────────────────────────
@@ -367,14 +416,17 @@ export default function ReceptionScreen() {
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  const groups = groupByPkgId(items);
-  const hasPkgId = hasPkgIdColumn(items);
+  const hasColumn = selectedColumn !== null;
+  const groups = hasColumn ? groupByPkgId(items, selectedColumn!) : [];
   const scannedCount = groups.filter(g => g.isReceived).length;
   const totalCount = groups.length;
   const progressRatio = totalCount > 0 ? scannedCount / totalCount : 0;
   const isAlreadyReceived = file?.status === 'received';
 
-  const progressLabel = `${scannedCount} / ${totalCount} PkgID scansionati`;
+  const progressLabel = `${scannedCount} / ${totalCount} ${selectedColumn ?? 'ID'} scansionati`;
+
+  // All column headers for the picker
+  const allColumns = items.length > 0 ? Object.keys(items[0].original_data ?? {}) : [];
 
   // ── Loading ────────────────────────────────────────────────────────────────
 
@@ -402,7 +454,7 @@ export default function ReceptionScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 16 }}
       >
         {/* Progress card */}
-        {hasPkgId && items.length > 0 && (
+        {hasColumn && items.length > 0 && (
           <View style={styles.progressCard}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressLabel}>{progressLabel}</Text>
@@ -417,34 +469,54 @@ export default function ReceptionScreen() {
         )}
 
         {/* Scan button */}
-        {!isAlreadyReceived && hasPkgId && (
+        {!isAlreadyReceived && hasColumn && (
           <AnimatedPressable
             onPress={() => {
-              console.log('[Reception] Open scanner pressed');
+              console.log('[Reception] Open scanner pressed, column:', selectedColumn);
               setScannerOpen(true);
             }}
           >
             <View style={styles.scanButton}>
               <ScanLine size={22} color="#FFFFFF" />
-              <Text style={styles.scanButtonText}>Scansiona Barcode</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.scanButtonText}>Scansiona Barcode</Text>
+                <Text style={styles.scanButtonSubtext}>Colonna: {selectedColumn}</Text>
+              </View>
             </View>
           </AnimatedPressable>
         )}
 
-        {/* No PkgID column */}
-        {items.length > 0 && !hasPkgId && (
-          <View style={styles.noPkgIdCard}>
-            <AlertCircle size={20} color={COLORS.warning} />
-            <Text style={styles.noPkgIdText}>
-              Colonna PkgID non trovata in questo file
+        {/* Column picker — shown when no column detected and items exist */}
+        {items.length > 0 && !hasColumn && (
+          <ColumnPicker
+            columns={allColumns}
+            onSelect={col => setSelectedColumn(col)}
+          />
+        )}
+
+        {/* Change column link — shown when a column is selected */}
+        {hasColumn && items.length > 0 && (
+          <View style={styles.changeColumnRow}>
+            <Text style={styles.changeColumnLabel}>
+              Colonna identificatore:
             </Text>
+            <Text style={styles.changeColumnValue}>{selectedColumn}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[Reception] Change column pressed, current:', selectedColumn);
+                setSelectedColumn(null);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.changeColumnLink}>Cambia</Text>
+            </TouchableOpacity>
           </View>
         )}
 
         {/* Groups list */}
-        {hasPkgId && groups.length > 0 && (
+        {hasColumn && groups.length > 0 && (
           <View style={{ gap: 10 }}>
-            <Text style={styles.sectionTitle}>Gruppi PkgID</Text>
+            <Text style={styles.sectionTitle}>Gruppi {selectedColumn}</Text>
             {groups.map(group => (
               <PkgGroupCard key={group.pkgId} group={group} />
             ))}
@@ -487,6 +559,7 @@ export default function ReceptionScreen() {
           setScannerOpen(false);
         }}
         onScanned={handleScanned}
+        columnName={selectedColumn ?? ''}
       />
 
       <ToastMessage
@@ -557,23 +630,65 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
+  scanButtonSubtext: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
 
-  // No PkgID
-  noPkgIdCard: {
-    backgroundColor: COLORS.warningMuted,
-    borderRadius: 12,
-    padding: 14,
+  // Change column row
+  changeColumnRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
+    gap: 6,
+    paddingHorizontal: 2,
   },
-  noPkgIdText: {
-    fontSize: 14,
-    color: COLORS.warning,
+  changeColumnLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  changeColumnValue: {
+    fontSize: 13,
     fontWeight: '600',
+    color: COLORS.text,
     flex: 1,
+  },
+  changeColumnLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+
+  // Column picker
+  columnPickerCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  columnPickerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 10,
+    lineHeight: 20,
+  },
+  columnPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  columnPickerRowText: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.text,
+    fontWeight: '500',
   },
 
   // Section title
