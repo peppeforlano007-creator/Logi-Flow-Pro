@@ -1,200 +1,687 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  Animated,
   ScrollView,
-  RefreshControl,
+  TextInput,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  Animated,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Package, ChevronRight, Box } from 'lucide-react-native';
+import { Stack } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
+import { ScanLine, CheckCircle2, XCircle, Clock, Package } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
-import { FileStatusBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
-import { SkeletonList } from '@/components/SkeletonLoader';
+import { ToastMessage, useToast } from '@/components/ToastMessage';
+import { ScannerModal } from '@/components/ScannerModal';
 import { db } from '@/utils/db';
-import type { SupplierFile } from '@/types';
+import type { SupplierFile, SupplierItem } from '@/types';
 
-function AnimatedListItem({ index, children }: { index: number; children: React.ReactNode }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(12)).current;
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
-    ]).start();
-  }, []);
+interface SessionLogEntry {
+  id: string;
+  code: string;
+  found: boolean;
+  fileNames: string[];
+  count: number;
+  timestamp: Date;
+}
+
+interface ActiveFileData {
+  file: SupplierFile;
+  items: SupplierItem[];
+}
+
+// ─── Session Log Row ──────────────────────────────────────────────────────────
+
+function SessionLogRow({ entry }: { entry: SessionLogEntry }) {
+  const timeStr = entry.timestamp.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fileNamesStr = entry.fileNames.join(', ');
+  const countLabel = entry.count === 1 ? '1 articolo' : `${entry.count} articoli`;
 
   return (
-    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      {children}
-    </Animated.View>
+    <View style={[styles.logRow, entry.found ? styles.logRowFound : styles.logRowNotFound]}>
+      <View style={styles.logRowIcon}>
+        {entry.found
+          ? <CheckCircle2 size={18} color="#16A34A" />
+          : <XCircle size={18} color="#DC2626" />
+        }
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={[styles.logCode, entry.found ? styles.logCodeFound : styles.logCodeNotFound]} numberOfLines={1}>
+          {entry.code}
+        </Text>
+        {entry.found ? (
+          <Text style={styles.logMeta} numberOfLines={1}>
+            {countLabel}
+          </Text>
+        ) : null}
+        {entry.found && fileNamesStr ? (
+          <Text style={styles.logFileName} numberOfLines={1}>
+            {fileNamesStr}
+          </Text>
+        ) : null}
+        {!entry.found ? (
+          <Text style={styles.logNotFoundText}>Codice non trovato</Text>
+        ) : null}
+      </View>
+      <View style={styles.logTimestamp}>
+        <Clock size={11} color={COLORS.textTertiary} />
+        <Text style={styles.logTime}>{timeStr}</Text>
+      </View>
+    </View>
   );
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('it-IT', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-interface FileWithBoxes extends SupplierFile {
-  total_boxes: number;
-}
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function RicezioneScreen() {
-  const router = useRouter();
-  const [files, setFiles] = useState<FileWithBoxes[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
-  const fetchFiles = useCallback(async () => {
-    console.log('[Ricezione] fetchFiles called');
+  const [activeFiles, setActiveFiles] = useState<ActiveFileData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [processingCode, setProcessingCode] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const errorBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
+
+  // ── Load active files ──────────────────────────────────────────────────────
+
+  const loadActiveFiles = useCallback(async () => {
+    console.log('[Ricezione] loadActiveFiles called');
+    setLoading(true);
     try {
-      const { data, error } = await db
+      const { data: files, error: filesError } = await db
         .from('supplier_files')
-        .select('*, reception_logs(boxes_received)')
+        .select('*')
         .neq('status', 'completed')
         .order('imported_at', { ascending: false });
 
-      if (error) {
-        console.error('[Ricezione] fetchFiles error:', error);
-        throw error;
+      if (filesError) {
+        console.error('[Ricezione] loadActiveFiles files error:', filesError);
+        throw filesError;
       }
 
-      console.log('[Ricezione] fetchFiles success, count:', data?.length);
-      const mapped: FileWithBoxes[] = (data || []).map((f: any) => {
-        const logs: { boxes_received: number }[] = f.reception_logs ?? [];
-        const total_boxes = logs.reduce((sum, l) => sum + (l.boxes_received ?? 0), 0);
-        return { ...f, total_boxes };
-      });
-      setFiles(mapped);
+      const activeFileList = (files ?? []) as SupplierFile[];
+      console.log('[Ricezione] Active files loaded:', activeFileList.length);
+
+      if (activeFileList.length === 0) {
+        setActiveFiles([]);
+        setLoading(false);
+        return;
+      }
+
+      const fileIds = activeFileList.map(f => f.id);
+      const { data: items, error: itemsError } = await db
+        .from('supplier_items')
+        .select('id, file_id, item_code, original_data, extra_data, status')
+        .in('file_id', fileIds);
+
+      if (itemsError) {
+        console.error('[Ricezione] loadActiveFiles items error:', itemsError);
+        throw itemsError;
+      }
+
+      const allItems = (items ?? []) as SupplierItem[];
+      console.log('[Ricezione] Total items loaded:', allItems.length);
+
+      const result: ActiveFileData[] = activeFileList.map(file => ({
+        file,
+        items: allItems.filter(i => i.file_id === file.id),
+      }));
+
+      setActiveFiles(result);
     } catch (err) {
-      console.error('[Ricezione] fetchFiles exception:', err);
+      console.error('[Ricezione] loadActiveFiles exception:', err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
-
-  const handleRefresh = useCallback(() => {
-    console.log('[Ricezione] handleRefresh called');
-    setRefreshing(true);
-    fetchFiles();
-  }, [fetchFiles]);
-
-  const handleCardPress = useCallback((fileId: string, fileName: string) => {
-    console.log('[Ricezione] handleCardPress', { fileId, fileName });
-    router.push(`/reception/${fileId}` as any);
-  }, [router]);
-
-  const renderItem = useCallback(({ item, index }: { item: FileWithBoxes; index: number }) => {
-    const dateDisplay = formatDate(item.imported_at);
-
-    return (
-      <AnimatedListItem index={index}>
-        <AnimatedPressable onPress={() => handleCardPress(item.id, item.file_name)}>
-          <View
-            style={{
-              backgroundColor: COLORS.surface,
-              borderRadius: 14,
-              padding: 16,
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text
-                  style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 2 }}
-                  numberOfLines={1}
-                >
-                  {item.file_name}
-                </Text>
-                <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                  {dateDisplay}
-                </Text>
-              </View>
-              <ChevronRight size={18} color={COLORS.textTertiary} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <FileStatusBadge status={item.status} />
-              <View style={{ flex: 1 }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Box size={13} color={COLORS.textSecondary} />
-                <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontVariant: ['tabular-nums'] }}>
-                  {item.total_boxes}
-                </Text>
-                <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                  scatole ricevute
-                </Text>
-              </View>
-            </View>
-          </View>
-        </AnimatedPressable>
-      </AnimatedListItem>
-    );
-  }, [handleCardPress]);
-
-  const emptyState = (
-    <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
-      <View
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 20,
-          backgroundColor: COLORS.warningMuted,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 16,
-        }}
-      >
-        <Package size={32} color={COLORS.warning} />
-      </View>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' }}>
-        Nessun file in ricezione
-      </Text>
-      <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 }}>
-        I file non ancora completati appariranno qui.
-      </Text>
-    </View>
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[Ricezione] Tab focused — reloading active files');
+      loadActiveFiles();
+    }, [loadActiveFiles]),
   );
+
+  // ── Error banner ───────────────────────────────────────────────────────────
+
+  const showErrorBanner = useCallback((msg: string) => {
+    setErrorBanner(msg);
+    Animated.timing(bannerOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    if (errorBannerTimer.current) clearTimeout(errorBannerTimer.current);
+    errorBannerTimer.current = setTimeout(() => {
+      Animated.timing(bannerOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setErrorBanner(null);
+      });
+    }, 3000);
+  }, [bannerOpacity]);
+
+  // ── Core scan logic ────────────────────────────────────────────────────────
+
+  const processCode = useCallback(
+    async (code: string) => {
+      const trimmed = code.trim();
+      if (!trimmed) return;
+      if (processingCode) return;
+      setProcessingCode(true);
+      console.log('[Ricezione] processCode start:', trimmed);
+
+      try {
+        const normalizedCode = trimmed.toLowerCase();
+
+        // Gather all items from all active files
+        const allItems: (SupplierItem & { _file: SupplierFile })[] = [];
+        for (const { file, items } of activeFiles) {
+          for (const item of items) {
+            allItems.push({ ...item, _file: file });
+          }
+        }
+
+        // Search in any field of original_data
+        const matched = allItems.filter(item =>
+          Object.values(item.original_data ?? {}).some(
+            val => String(val).trim().toLowerCase() === normalizedCode,
+          ),
+        );
+
+        console.log('[Ricezione] processCode matched:', matched.length, 'items for code:', trimmed);
+
+        const logId = `${Date.now()}-${Math.random()}`;
+        const now = new Date().toISOString();
+
+        if (matched.length === 0) {
+          console.log('[Ricezione] Code not found:', trimmed);
+          setSessionLog(prev => [
+            { id: logId, code: trimmed, found: false, fileNames: [], count: 0, timestamp: new Date() },
+            ...prev.slice(0, 19),
+          ]);
+          showToast(`⚠ Codice non trovato: ${trimmed}`, 'error');
+          showErrorBanner(`Codice non trovato: ${trimmed}`);
+          return;
+        }
+
+        // Group matched items by file
+        const fileMap = new Map<string, { file: SupplierFile; items: typeof matched }>();
+        for (const item of matched) {
+          const existing = fileMap.get(item.file_id);
+          if (existing) {
+            existing.items.push(item);
+          } else {
+            fileMap.set(item.file_id, { file: item._file, items: [item] });
+          }
+        }
+
+        // Update each matched item in DB
+        for (const item of matched) {
+          const { error: itemErr } = await db
+            .from('supplier_items')
+            .update({
+              status: 'processing',
+              extra_data: {
+                ...item.extra_data,
+                received: 'true',
+                received_at: now,
+              },
+            })
+            .eq('id', item.id);
+          if (itemErr) console.error('[Ricezione] item update error:', itemErr, item.id);
+        }
+
+        // Update extra_columns for each involved file
+        for (const [fileId, { file }] of fileMap.entries()) {
+          const currentExtraColumns: string[] = file.extra_columns ?? [];
+          const newColumns = ['received', 'received_at'].filter(c => !currentExtraColumns.includes(c));
+          if (newColumns.length > 0) {
+            console.log('[Ricezione] Adding extra_columns to file:', fileId, newColumns);
+            const { error: colErr } = await db
+              .from('supplier_files')
+              .update({ extra_columns: [...currentExtraColumns, ...newColumns] })
+              .eq('id', fileId);
+            if (colErr) console.error('[Ricezione] extra_columns update error:', colErr);
+          }
+        }
+
+        // Optimistic local update
+        const matchedIds = new Set(matched.map(m => m.id));
+        setActiveFiles(prev =>
+          prev.map(({ file, items }) => ({
+            file,
+            items: items.map(item => {
+              if (!matchedIds.has(item.id)) return item;
+              return {
+                ...item,
+                status: 'processing' as const,
+                extra_data: { ...item.extra_data, received: 'true', received_at: now },
+              };
+            }),
+          })),
+        );
+
+        const fileNames = Array.from(fileMap.values()).map(v => v.file.file_name);
+        const countLabel = matched.length === 1 ? '1 articolo ricevuto' : `${matched.length} articoli ricevuti`;
+        const fileLabel = fileNames.length === 1 ? fileNames[0] : `${fileNames.length} file`;
+
+        setSessionLog(prev => [
+          { id: logId, code: trimmed, found: true, fileNames, count: matched.length, timestamp: new Date() },
+          ...prev.slice(0, 19),
+        ]);
+
+        showToast(`${countLabel} — ${fileLabel}`, 'success');
+        console.log('[Ricezione] processCode success:', { code: trimmed, count: matched.length, files: fileNames });
+      } catch (err: any) {
+        console.error('[Ricezione] processCode error:', err);
+        showToast(err?.message ?? 'Errore durante la scansione', 'error');
+      } finally {
+        setProcessingCode(false);
+      }
+    },
+    [activeFiles, processingCode, showToast, showErrorBanner],
+  );
+
+  const handleScanned = useCallback(
+    (code: string) => {
+      console.log('[Ricezione] handleScanned from camera:', code);
+      setScannerOpen(false);
+      processCode(code);
+    },
+    [processCode],
+  );
+
+  const handleManualSearch = useCallback(() => {
+    console.log('[Ricezione] handleManualSearch pressed, code:', manualCode);
+    if (!manualCode.trim()) return;
+    processCode(manualCode.trim());
+    setManualCode('');
+  }, [manualCode, processCode]);
+
+  // ── Derived: global progress ───────────────────────────────────────────────
+
+  let totalItems = 0;
+  let receivedItems = 0;
+  for (const { items } of activeFiles) {
+    totalItems += items.length;
+    receivedItems += items.filter(i => i.extra_data?.received === 'true').length;
+  }
+  const progressRatio = totalItems > 0 ? receivedItems / totalItems : 0;
+  const progressPercent = Math.round(progressRatio * 100);
+  const progressLabel = `${receivedItems} articoli ricevuti su ${totalItems} totali`;
+  const hasActiveFiles = activeFiles.length > 0;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-      <Stack.Screen options={{ title: 'Ricezione' }} />
+      <Stack.Screen options={{ title: 'Ricezione', headerLargeTitle: true }} />
 
       {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={COLORS.primary} size="large" />
+        </View>
+      ) : !hasActiveFiles ? (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconWrap}>
+            <Package size={36} color={COLORS.warning} />
+          </View>
+          <Text style={styles.emptyTitle}>Nessun file attivo da ricevere</Text>
+          <Text style={styles.emptySubtitle}>
+            Importa prima un file nella sezione Import per iniziare la ricezione.
+          </Text>
+        </View>
+      ) : (
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
-          <SkeletonList count={3} />
+          {/* Global progress card */}
+          <View style={styles.progressCard}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>{progressLabel}</Text>
+              <Text style={styles.progressPercent}>{progressPercent}%</Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${progressPercent}%` as any }]} />
+            </View>
+          </View>
+
+          {/* Scan button */}
+          <AnimatedPressable
+            onPress={() => {
+              console.log('[Ricezione] Open scanner button pressed');
+              setScannerOpen(true);
+            }}
+            disabled={processingCode}
+          >
+            <View style={[styles.scanButton, processingCode && { opacity: 0.6 }]}>
+              {processingCode ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <ScanLine size={24} color="#FFFFFF" />
+              )}
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.scanButtonText}>Scansiona Barcode</Text>
+                <Text style={styles.scanButtonSubtext}>Cerca in tutti i file attivi</Text>
+              </View>
+            </View>
+          </AnimatedPressable>
+
+          {/* Error banner */}
+          {errorBanner ? (
+            <Animated.View style={[styles.errorBanner, { opacity: bannerOpacity }]}>
+              <XCircle size={16} color="#DC2626" />
+              <Text style={styles.errorBannerText}>{errorBanner}</Text>
+            </Animated.View>
+          ) : null}
+
+          {/* Manual input */}
+          <View style={styles.manualRow}>
+            <TextInput
+              style={styles.manualInput}
+              placeholder="Inserisci codice manualmente..."
+              placeholderTextColor={COLORS.textTertiary}
+              value={manualCode}
+              onChangeText={setManualCode}
+              onSubmitEditing={handleManualSearch}
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.manualSearchBtn, !manualCode.trim() && { opacity: 0.4 }]}
+              onPress={handleManualSearch}
+              disabled={!manualCode.trim() || processingCode}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.manualSearchBtnText}>Cerca</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Session log */}
+          {sessionLog.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              <Text style={styles.sectionTitle}>Ricevuti in questa sessione</Text>
+              {sessionLog.map(entry => (
+                <SessionLogRow key={entry.id} entry={entry} />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.logEmptyState}>
+              <ScanLine size={28} color={COLORS.textTertiary} />
+              <Text style={styles.logEmptyText}>
+                Scansiona un barcode per iniziare
+              </Text>
+            </View>
+          )}
         </ScrollView>
-      ) : (
-        <FlatList
-          data={files}
-          keyExtractor={item => item.id}
-          renderItem={renderItem}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ padding: 16, paddingBottom: 120, flexGrow: 1 }}
-          ListEmptyComponent={emptyState}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
-          }
-        />
       )}
+
+      {/* Scanner modal */}
+      <ScannerModal
+        visible={scannerOpen}
+        onClose={() => {
+          console.log('[Ricezione] Scanner modal closed');
+          setScannerOpen(false);
+        }}
+        onScanned={handleScanned}
+        hint="Inquadra il barcode — cerca in tutti i file attivi"
+      />
+
+      <ToastMessage
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 120,
+    gap: 14,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+    gap: 12,
+  },
+  emptyIconWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: 22,
+    backgroundColor: COLORS.warningMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // Progress card
+  progressCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  progressPercent: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 8,
+    backgroundColor: COLORS.accent,
+    borderRadius: 4,
+  },
+
+  // Scan button
+  scanButton: {
+    backgroundColor: '#1A56DB',
+    borderRadius: 14,
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    shadowColor: '#1A56DB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  scanButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  scanButtonSubtext: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+
+  // Error banner
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorBannerText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+
+  // Manual input row
+  manualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  manualInput: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  manualSearchBtn: {
+    backgroundColor: '#1A56DB',
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manualSearchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Section title
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Log rows
+  logRow: {
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+  },
+  logRowFound: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#BBF7D0',
+  },
+  logRowNotFound: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FECACA',
+  },
+  logRowIcon: {
+    marginTop: 1,
+  },
+  logCode: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  logCodeFound: {
+    color: '#15803D',
+  },
+  logCodeNotFound: {
+    color: '#DC2626',
+  },
+  logMeta: {
+    fontSize: 12,
+    color: '#16A34A',
+    fontWeight: '500',
+  },
+  logFileName: {
+    fontSize: 11,
+    color: '#16A34A',
+    opacity: 0.8,
+  },
+  logNotFoundText: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '500',
+  },
+  logTimestamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  logTime: {
+    fontSize: 10,
+    color: COLORS.textTertiary,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Log empty state
+  logEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 10,
+  },
+  logEmptyText: {
+    fontSize: 14,
+    color: COLORS.textTertiary,
+    textAlign: 'center',
+  },
+});
