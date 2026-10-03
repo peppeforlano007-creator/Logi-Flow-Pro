@@ -9,7 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ScanLine, CheckCircle2, CheckCircle, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
@@ -254,7 +254,6 @@ function ColumnPicker({
 
 export default function ReceptionScreen() {
   const { fileId } = useLocalSearchParams<{ fileId: string }>();
-  const router = useRouter();
   const { toast, showToast, hideToast } = useToast();
 
   const [file, setFile] = useState<SupplierFile | null>(null);
@@ -405,14 +404,13 @@ export default function ReceptionScreen() {
       console.log('[Reception] File marked as received');
       showToast('File segnato come ricevuto completamente', 'success');
       setFile(prev => prev ? { ...prev, status: 'received' } : prev);
-      setTimeout(() => router.back(), 1500);
     } catch (err: any) {
       console.error('[Reception] handleMarkComplete error:', err);
       showToast(err?.message ?? 'Errore', 'error');
     } finally {
       setMarkingComplete(false);
     }
-  }, [fileId, showToast, router]);
+  }, [fileId, showToast]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
 

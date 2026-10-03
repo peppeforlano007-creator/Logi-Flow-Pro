@@ -59,7 +59,7 @@ export default function RicezioneScreen() {
       const { data, error } = await db
         .from('supplier_files')
         .select('*, reception_logs(boxes_received)')
-        .in('status', ['imported', 'receiving'])
+        .neq('status', 'completed')
         .order('imported_at', { ascending: false });
 
       if (error) {
@@ -166,7 +166,7 @@ export default function RicezioneScreen() {
         Nessun file in ricezione
       </Text>
       <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 }}>
-        I file con stato "Importato" o "In Ricezione" appariranno qui.
+        I file non ancora completati appariranno qui.
       </Text>
     </View>
   );
