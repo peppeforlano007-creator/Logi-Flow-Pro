@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "LogiFlow Pro",
+    "slug": "logiflow-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/app-icon-nst.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/app-icon-nst.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.placeholder.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app-icon-nst.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "com.placeholder.app"
+    },
+    "web": {
+      "favicon": "./assets/images/newly.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+    "scheme": "logiflowpro",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}
