@@ -92,6 +92,9 @@ export default function RootLayout() {
               <Stack>
                 {/* Main app with tabs */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="file/[id]" options={{ headerShown: true }} />
+                <Stack.Screen name="item/[id]" options={{ headerShown: true }} />
+                <Stack.Screen name="reception/[fileId]" options={{ headerShown: true }} />
               </Stack>
               <SystemBars style={"auto"} />
               </GestureHandlerRootView>

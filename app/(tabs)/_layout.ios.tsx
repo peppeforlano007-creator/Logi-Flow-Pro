@@ -1,15 +1,25 @@
 import React from 'react';
-import { Stack } from 'expo-router';
+import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 
 export default function TabLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'none',
-      }}
-    >
-      <Stack.Screen key="home" name="(home)" />
-    </Stack>
+    <NativeTabs>
+      <NativeTabs.Trigger name="(import)">
+        <Icon sf="arrow.down.doc.fill" />
+        <Label>Import</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="(ricezione)">
+        <Icon sf="shippingbox.fill" />
+        <Label>Ricezione</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="(lavorazione)">
+        <Icon sf="wrench.fill" />
+        <Label>Lavorazione</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="(export)">
+        <Icon sf="arrow.up.doc.fill" />
+        <Label>Export</Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }
