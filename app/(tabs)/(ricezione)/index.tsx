@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -88,8 +88,23 @@ export default function RicezioneScreen() {
   const [manualCode, setManualCode] = useState('');
   const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   const errorBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
+
+  // ── Derived: available columns ─────────────────────────────────────────────
+
+  const availableColumns = useMemo(() => {
+    const colSet = new Set<string>();
+    for (const { file } of activeFiles) {
+      if (Array.isArray(file.column_headers)) {
+        for (const col of file.column_headers) {
+          colSet.add(col);
+        }
+      }
+    }
+    return Array.from(colSet).sort((a, b) => a.localeCompare(b));
+  }, [activeFiles]);
 
   // ── Load active files ──────────────────────────────────────────────────────
 
@@ -172,7 +187,7 @@ export default function RicezioneScreen() {
       if (!trimmed) return;
       if (processingCode) return;
       setProcessingCode(true);
-      console.log('[Ricezione] processCode start:', trimmed);
+      console.log('[Ricezione] processCode start:', trimmed, '| selectedColumn:', selectedColumn ?? 'all');
 
       try {
         const normalizedCode = trimmed.toLowerCase();
@@ -185,14 +200,20 @@ export default function RicezioneScreen() {
           }
         }
 
-        // Search in any field of original_data
-        const matched = allItems.filter(item =>
-          Object.values(item.original_data ?? {}).some(
+        // Search: respect selectedColumn filter
+        const matched = allItems.filter(item => {
+          if (selectedColumn !== null) {
+            // Only match the specific column
+            const val = (item.original_data ?? {})[selectedColumn];
+            return String(val ?? '').trim().toLowerCase() === normalizedCode;
+          }
+          // Search in any field of original_data
+          return Object.values(item.original_data ?? {}).some(
             val => String(val).trim().toLowerCase() === normalizedCode,
-          ),
-        );
+          );
+        });
 
-        console.log('[Ricezione] processCode matched:', matched.length, 'items for code:', trimmed);
+        console.log('[Ricezione] processCode matched:', matched.length, 'items for code:', trimmed, '| column:', selectedColumn ?? 'all');
 
         const logId = `${Date.now()}-${Math.random()}`;
         const now = new Date().toISOString();
@@ -283,7 +304,7 @@ export default function RicezioneScreen() {
         setProcessingCode(false);
       }
     },
-    [activeFiles, processingCode, showToast, showErrorBanner],
+    [activeFiles, processingCode, selectedColumn, showToast, showErrorBanner],
   );
 
   const handleScanned = useCallback(
@@ -302,6 +323,11 @@ export default function RicezioneScreen() {
     setManualCode('');
   }, [manualCode, processCode]);
 
+  const handleColumnChipPress = useCallback((col: string | null) => {
+    console.log('[Ricezione] Column chip pressed:', col ?? 'all');
+    setSelectedColumn(col);
+  }, []);
+
   // ── Derived: global progress ───────────────────────────────────────────────
 
   let totalItems = 0;
@@ -314,6 +340,10 @@ export default function RicezioneScreen() {
   const progressPercent = Math.round(progressRatio * 100);
   const progressLabel = `${receivedItems} articoli ricevuti su ${totalItems} totali`;
   const hasActiveFiles = activeFiles.length > 0;
+
+  const scanButtonSubtext = selectedColumn !== null
+    ? `Cerca in colonna: ${selectedColumn}`
+    : 'Cerca in tutti i file attivi';
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -352,6 +382,44 @@ export default function RicezioneScreen() {
             </View>
           </View>
 
+          {/* Column filter */}
+          <View style={styles.columnFilterSection}>
+            <Text style={styles.columnFilterLabel}>Cerca in colonna:</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.columnChipsRow}
+            >
+              {/* "Tutte" chip */}
+              <TouchableOpacity
+                style={[styles.columnChip, selectedColumn === null && styles.columnChipActive]}
+                onPress={() => handleColumnChipPress(null)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.columnChipText, selectedColumn === null && styles.columnChipTextActive]}>
+                  Tutte
+                </Text>
+              </TouchableOpacity>
+
+              {/* Per-column chips */}
+              {availableColumns.map(col => {
+                const isActive = selectedColumn === col;
+                return (
+                  <TouchableOpacity
+                    key={col}
+                    style={[styles.columnChip, isActive && styles.columnChipActive]}
+                    onPress={() => handleColumnChipPress(col)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.columnChipText, isActive && styles.columnChipTextActive]}>
+                      {col}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           {/* Scan button */}
           <AnimatedPressable
             onPress={() => {
@@ -368,7 +436,7 @@ export default function RicezioneScreen() {
               )}
               <View style={{ alignItems: 'center' }}>
                 <Text style={styles.scanButtonText}>Scansiona Barcode</Text>
-                <Text style={styles.scanButtonSubtext}>Cerca in tutti i file attivi</Text>
+                <Text style={styles.scanButtonSubtext}>{scanButtonSubtext}</Text>
               </View>
             </View>
           </AnimatedPressable>
@@ -529,6 +597,42 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: COLORS.accent,
     borderRadius: 4,
+  },
+
+  // Column filter
+  columnFilterSection: {
+    gap: 8,
+  },
+  columnFilterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
+  },
+  columnChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  columnChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  columnChipActive: {
+    backgroundColor: '#1A56DB',
+    borderColor: '#1A56DB',
+  },
+  columnChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  columnChipTextActive: {
+    color: '#FFFFFF',
   },
 
   // Scan button
