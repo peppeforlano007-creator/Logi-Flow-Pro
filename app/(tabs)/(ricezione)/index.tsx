@@ -221,10 +221,15 @@ export default function RicezioneScreen() {
 
         // Update each matched item in DB
         for (const item of matched) {
+          console.log('[Ricezione] Updating item in DB:', item.id, 'clearing AdjReason, setting received');
           const { error: itemErr } = await db
             .from('supplier_items')
             .update({
               status: 'processing',
+              original_data: {
+                ...item.original_data,
+                AdjReason: '',
+              },
               extra_data: {
                 ...item.extra_data,
                 received: 'true',
@@ -274,6 +279,7 @@ export default function RicezioneScreen() {
               return {
                 ...item,
                 status: 'processing' as const,
+                original_data: { ...item.original_data, AdjReason: '' },
                 extra_data: { ...item.extra_data, received: 'true', received_at: now },
               };
             }),
