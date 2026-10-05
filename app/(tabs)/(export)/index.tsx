@@ -7,12 +7,12 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useFocusEffect } from 'expo-router';
 import { Download, FileText } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { FileStatusBadge, FormatBadge } from '@/components/StatusBadge';
-import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { SkeletonList } from '@/components/SkeletonLoader';
 import { ToastMessage, useToast } from '@/components/ToastMessage';
 import { db } from '@/utils/db';
@@ -88,9 +88,11 @@ export default function ExportScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchFiles();
+    }, [fetchFiles])
+  );
 
   const handleRefresh = useCallback(() => {
     console.log('[Export] handleRefresh called');
@@ -161,33 +163,34 @@ export default function ExportScreen() {
                 {dateDisplay}
               </Text>
             </View>
-            <AnimatedPressable
-              onPress={() => handleExport(item)}
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[Export] Esporta button pressed, fileId:', item.id);
+                handleExport(item);
+              }}
               disabled={isExporting}
+              activeOpacity={0.75}
+              style={{
+                backgroundColor: isExporting ? COLORS.accent + 'AA' : COLORS.accent,
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                minWidth: 90,
+                justifyContent: 'center',
+              }}
             >
-              <View
-                style={{
-                  backgroundColor: COLORS.accent,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  minWidth: 90,
-                  justifyContent: 'center',
-                }}
-              >
-                {isExporting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Download size={15} color="#FFFFFF" />
-                )}
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
-                  {isExporting ? '...' : 'Esporta'}
-                </Text>
-              </View>
-            </AnimatedPressable>
+              {isExporting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Download size={15} color="#FFFFFF" />
+              )}
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                {isExporting ? '...' : 'Esporta'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
