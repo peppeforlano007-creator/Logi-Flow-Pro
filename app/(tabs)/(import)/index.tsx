@@ -184,6 +184,20 @@ export default function ImportScreen() {
     console.log('[Import] handleConfirmImport called', { fileName: selectedFile.name, importedBy });
 
     setImporting(true);
+
+    const { data: existing } = await db
+      .from('supplier_files')
+      .select('id')
+      .eq('file_name', selectedFile.name)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('[Import] Duplicate file detected', { fileName: selectedFile.name, existingId: existing.id });
+      showToast(`Lista "${selectedFile.name}" già importata. Elimina quella esistente prima di reimportarla.`, 'error');
+      setImporting(false);
+      return;
+    }
+
     try {
       const base64 = await readFileAsBase64(selectedFile.uri);
       console.log('[Import] Calling parse-supplier-file edge function');
