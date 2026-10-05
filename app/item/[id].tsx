@@ -687,64 +687,6 @@ export default function ItemDetailScreen() {
           </View>
         </View>
 
-        {/* Extra data section */}
-        {extraColumns.length > 0 && (
-          <View
-            style={{
-              backgroundColor: COLORS.surface,
-              borderRadius: 14,
-              padding: 16,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              gap: 14,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
-                Dati Aggiuntivi
-              </Text>
-              <View
-                style={{
-                  backgroundColor: COLORS.primaryMuted,
-                  borderRadius: 6,
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                }}
-              >
-                <Text style={{ fontSize: 10, color: COLORS.primary, fontWeight: '600' }}>
-                  {extraColumns.length} colonne
-                </Text>
-              </View>
-            </View>
-            {extraColumns.map(col => (
-              <View key={col} style={{ gap: 5 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {col}
-                </Text>
-                <TextInput
-                  value={String(extraData[col] ?? '')}
-                  onChangeText={(v) => {
-                    console.log('[ItemDetail] extraData field changed:', col, v);
-                    setExtraData(prev => ({ ...prev, [col]: v }));
-                  }}
-                  placeholder={`Valore per ${col}`}
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={{
-                    backgroundColor: COLORS.surfaceSecondary,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    fontSize: 14,
-                    color: COLORS.text,
-                  }}
-                />
-              </View>
-            ))}
-          </View>
-        )}
-
         {/* Processed by + Save */}
         <View
           style={{
