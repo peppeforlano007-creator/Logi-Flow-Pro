@@ -270,7 +270,7 @@ export default function ItemDetailScreen() {
     try {
       // Compute final AdjReason value
       let adjReason = '';
-      if (selectedCondition === null) {
+      if (selectedCondition === null || selectedCondition === 'no issue') {
         adjReason = '';
       } else if (selectedCondition === 'other') {
         adjReason = altroText.trim();
