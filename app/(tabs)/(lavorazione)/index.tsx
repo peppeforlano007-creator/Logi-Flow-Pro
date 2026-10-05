@@ -9,11 +9,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { Wrench, ChevronRight, Package } from 'lucide-react-native';
+import { Wrench, ChevronRight, Package, Camera } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
 import { SkeletonList } from '@/components/SkeletonLoader';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { ScannerModal } from '@/components/ScannerModal';
 import { db } from '@/utils/db';
 import type { SupplierItem } from '@/types';
 
@@ -57,6 +58,7 @@ export default function LavorazioneScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedColumn, setSelectedColumn] = useState<ToggleColumn>('PkgID');
   const [searchQuery, setSearchQuery] = useState('');
+  const [scannerVisible, setScannerVisible] = useState(false);
 
   // ── Data fetching ────────────────────────────────────────────────────────
 
@@ -276,28 +278,41 @@ export default function LavorazioneScreen() {
         })}
       </View>
 
-      {/* Search input */}
-      <View
-        style={{
-          backgroundColor: COLORS.surface,
-          borderRadius: 10,
-          borderWidth: 1,
-          borderColor: COLORS.border,
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          marginBottom: 16,
-        }}
-      >
-        <TextInput
-          value={searchQuery}
-          onChangeText={handleSearchChange}
-          placeholder="Inserisci codice..."
-          placeholderTextColor={COLORS.textTertiary}
-          style={{ fontSize: 14, color: COLORS.text, padding: 0 }}
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-        />
+      {/* Search input + camera */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: COLORS.surface,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+          }}
+        >
+          <TextInput
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            placeholder="Inserisci codice..."
+            placeholderTextColor={COLORS.textTertiary}
+            style={{ fontSize: 14, color: COLORS.text, padding: 0 }}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <AnimatedPressable onPress={() => { console.log('[Lavorazione] scanner button pressed'); setScannerVisible(true); }}>
+          <View style={{
+            width: 44, height: 44,
+            borderRadius: 10,
+            backgroundColor: COLORS.primaryMuted,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Camera size={22} color={COLORS.primary} />
+          </View>
+        </AnimatedPressable>
       </View>
     </View>
   );
@@ -358,6 +373,16 @@ export default function LavorazioneScreen() {
           keyboardDismissMode="on-drag"
         />
       )}
+      <ScannerModal
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onScanned={(code) => {
+          console.log('[Lavorazione] barcode scanned:', code);
+          setSearchQuery(code);
+          setScannerVisible(false);
+        }}
+        hint="Scansiona il codice articolo"
+      />
     </View>
   );
 }
