@@ -171,7 +171,13 @@ export default function FileDetailScreen() {
   const progress = items.length > 0 ? completedCount / items.length : 0;
 
   const renderItem = useCallback(({ item, index }: { item: SupplierItem; index: number }) => {
-    const dataEntries = Object.entries(item.original_data ?? {}).slice(0, 3);
+    const originalData = item.original_data ?? {};
+    const pkgId = originalData['PkgID'];
+    const displayTitle = pkgId && pkgId.trim() !== '' ? pkgId : item.item_code;
+    const EXCLUDED_PREVIEW_KEYS = new Set(['PkgID', 'AdjReason']);
+    const dataEntries = Object.entries(originalData)
+      .filter(([k]) => !EXCLUDED_PREVIEW_KEYS.has(k))
+      .slice(0, 3);
     const previewText = dataEntries.map(([k, v]) => `${k}: ${v}`).join(' · ');
 
     return (
@@ -193,7 +199,7 @@ export default function FileDetailScreen() {
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>
-                  {item.item_code}
+                  {displayTitle}
                 </Text>
                 <ItemStatusBadge status={item.status} size="sm" />
               </View>
