@@ -19,6 +19,7 @@ import { db } from '@/utils/db';
 import type { SupplierItem, SupplierFile } from '@/types';
 
 const CONDITIONS = [
+  { label: 'NESSUNA SEGNALAZIONE',  value: 'no issue' },
   { label: 'PRODOTTO NON RICEVUTO', value: 'shortage' },
   { label: 'SCATOLA VUOTA',         value: 'empty box' },
   { label: 'PRODOTTO SBAGLIATO',    value: 'wrong device' },
@@ -27,7 +28,7 @@ const CONDITIONS = [
   { label: 'ALTRO',                 value: 'other' },
 ] as const;
 
-const FIXED_VALUES = CONDITIONS.slice(0, 5).map(c => c.value);
+const FIXED_VALUES = CONDITIONS.slice(0, 6).map(c => c.value);
 
 const SELEZIONE_OPTIONS = [
   { value: 'A' as const, label: 'A', description: 'Prezzo intero (UNITCOST)' },
