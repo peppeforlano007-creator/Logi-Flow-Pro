@@ -185,7 +185,11 @@ export default function LavorazioneScreen() {
                 style={{ fontSize: 12, color: COLORS.textSecondary }}
                 numberOfLines={1}
               >
-                {item.original_data?.['ITEMDESC'] ?? '—'}
+                {(() => {
+                    const data = item.original_data ?? {};
+                    const key = Object.keys(data).find(k => k.toLowerCase() === 'itemdesc');
+                    return key ? (data[key] || '—') : '—';
+                  })()}
               </Text>
               <View style={{ marginTop: 6 }}>
                 <ItemStatusBadge status={itemStatus} size="sm" />
