@@ -68,7 +68,7 @@ export default function LavorazioneScreen() {
       const { data, error } = await db
         .from('supplier_items')
         .select('*, supplier_files(file_name, extra_columns)')
-        .eq('status', 'processing')
+        .in('status', ['processing', 'completed'])
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -77,7 +77,12 @@ export default function LavorazioneScreen() {
       }
 
       console.log('[Lavorazione] fetchItems success, count:', data?.length ?? 0);
-      setItems((data as ItemWithFile[]) ?? []);
+      const sorted = [...((data as ItemWithFile[]) ?? [])].sort((a, b) => {
+        if (a.status === b.status) return 0;
+        if (a.status === 'processing') return -1;
+        return 1;
+      });
+      setItems(sorted);
     } catch (err) {
       console.error('[Lavorazione] fetchItems exception:', err);
     } finally {
@@ -107,7 +112,8 @@ export default function LavorazioneScreen() {
         return value.toLowerCase().includes(searchQuery.toLowerCase());
       });
 
-  const totalCount = items.length;
+  const processingCount = items.filter(i => i.status === 'processing').length;
+  const completedCount = items.filter(i => i.status === 'completed').length;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -134,18 +140,19 @@ export default function LavorazioneScreen() {
     const identifier = item.original_data?.['PkgID'] ?? item.original_data?.['LPN'] ?? item.item_code;
     const fileName = item.supplier_files?.file_name ?? '—';
     const itemStatus = item.status as 'pending' | 'processing' | 'completed';
+    const isCompleted = item.status === 'completed';
 
     return (
       <AnimatedListItem index={index}>
         <AnimatedPressable onPress={() => handleItemPress(item)}>
           <View
             style={{
-              backgroundColor: COLORS.surface,
+              backgroundColor: isCompleted ? '#F0FDF4' : COLORS.surface,
               borderRadius: 14,
               padding: 16,
               marginBottom: 10,
               borderWidth: 1,
-              borderColor: COLORS.border,
+              borderColor: isCompleted ? '#86EFAC' : COLORS.border,
               flexDirection: 'row',
               alignItems: 'center',
               gap: 12,
@@ -157,13 +164,13 @@ export default function LavorazioneScreen() {
                 width: 40,
                 height: 40,
                 borderRadius: 10,
-                backgroundColor: COLORS.statusProcessingBg,
+                backgroundColor: isCompleted ? '#DCFCE7' : COLORS.statusProcessingBg,
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Package size={18} color={COLORS.statusProcessing} />
+              <Package size={18} color={isCompleted ? '#16A34A' : COLORS.statusProcessing} />
             </View>
 
             {/* Text block */}
@@ -195,7 +202,7 @@ export default function LavorazioneScreen() {
 
   // ── Header (summary + toggle + search) ───────────────────────────────────
 
-  const countLabel = totalCount === 1 ? '1 articolo da lavorare' : `${totalCount} articoli da lavorare`;
+  const countLabel = `${processingCount} da lavorare · ${completedCount} completati`;
 
   const listHeader = (
     <View style={{ marginBottom: 8 }}>
@@ -226,7 +233,10 @@ export default function LavorazioneScreen() {
           <Wrench size={16} color={COLORS.statusProcessing} />
         </View>
         <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }}>
-          {countLabel}
+          {processingCount}
+          <Text style={{ fontWeight: '400' }}> da lavorare · </Text>
+          {completedCount}
+          <Text style={{ fontWeight: '400' }}> completati</Text>
         </Text>
       </View>
 
@@ -335,7 +345,7 @@ export default function LavorazioneScreen() {
         <Wrench size={32} color={COLORS.statusProcessing} />
       </View>
       <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' }}>
-        Nessun articolo ricevuto
+        Nessun articolo in lavorazione
       </Text>
       <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 }}>
         Scansiona i colli nella sezione Ricezione per iniziare.
