@@ -9,13 +9,24 @@ import {
   Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Save, CheckCircle, Clock } from 'lucide-react-native';
+import { CheckCircle, Clock } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { ToastMessage, useToast } from '@/components/ToastMessage';
 import { db } from '@/utils/db';
 import type { SupplierItem, SupplierFile } from '@/types';
+
+const CONDITIONS = [
+  { label: 'PRODOTTO NON RICEVUTO', value: 'shortage' },
+  { label: 'SCATOLA VUOTA',         value: 'empty box' },
+  { label: 'PRODOTTO SBAGLIATO',    value: 'wrong device' },
+  { label: 'DISPOSITIVO BLOCCATO',  value: 'cloud locked' },
+  { label: 'SCADUTO',               value: 'expired' },
+  { label: 'ALTRO',                 value: 'other' },
+] as const;
+
+const FIXED_VALUES = CONDITIONS.slice(0, 5).map(c => c.value);
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -42,6 +53,10 @@ export default function ItemDetailScreen() {
   const [extraData, setExtraData] = useState<Record<string, string>>({});
   const [processedBy, setProcessedBy] = useState('');
 
+  // AdjReason condition picker state
+  const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
+  const [altroText, setAltroText] = useState('');
+
   const fetchData = useCallback(async () => {
     console.log('[ItemDetail] fetchData called', { id });
     try {
@@ -56,18 +71,32 @@ export default function ItemDetailScreen() {
         throw itemError;
       }
 
-      const item = itemData as SupplierItem;
-      console.log('[ItemDetail] item fetched:', item.item_code);
-      setItem(item);
-      setOriginalData({ ...(item.original_data ?? {}) });
-      setExtraData({ ...(item.extra_data ?? {}) });
-      if (item.processed_by) setProcessedBy(item.processed_by);
+      const fetchedItem = itemData as SupplierItem;
+      console.log('[ItemDetail] item fetched:', fetchedItem.item_code);
+      setItem(fetchedItem);
+      setOriginalData({ ...(fetchedItem.original_data ?? {}) });
+      setExtraData({ ...(fetchedItem.extra_data ?? {}) });
+      if (fetchedItem.processed_by) setProcessedBy(fetchedItem.processed_by);
+
+      // Pre-select AdjReason condition from loaded data
+      const adjValue: string = fetchedItem.original_data?.['AdjReason'] ?? '';
+      if (adjValue === '') {
+        setSelectedCondition(null);
+        setAltroText('');
+      } else if ((FIXED_VALUES as readonly string[]).includes(adjValue)) {
+        setSelectedCondition(adjValue);
+        setAltroText('');
+      } else {
+        // Non-empty value that doesn't match a fixed condition → ALTRO with free text
+        setSelectedCondition('other');
+        setAltroText(adjValue);
+      }
 
       // Fetch file for extra_columns
       const { data: fileData, error: fileError } = await db
         .from('supplier_files')
         .select('*')
-        .eq('id', item.file_id)
+        .eq('id', fetchedItem.file_id)
         .single();
 
       if (!fileError && fileData) {
@@ -75,7 +104,7 @@ export default function ItemDetailScreen() {
         setFile(fileData as SupplierFile);
         // Initialize extra_data with empty strings for any missing extra columns
         const extraCols: string[] = fileData.extra_columns ?? [];
-        const currentExtra = { ...(item.extra_data ?? {}) };
+        const currentExtra = { ...(fetchedItem.extra_data ?? {}) };
         extraCols.forEach(col => {
           if (!(col in currentExtra)) currentExtra[col] = '';
         });
@@ -92,14 +121,39 @@ export default function ItemDetailScreen() {
     fetchData();
   }, [fetchData]);
 
+  const handleConditionPress = useCallback((value: string) => {
+    if (selectedCondition === value) {
+      console.log('[ItemDetail] condition deselected:', value);
+      setSelectedCondition(null);
+      setAltroText('');
+    } else {
+      console.log('[ItemDetail] condition selected:', value);
+      setSelectedCondition(value);
+      if (value !== 'other') setAltroText('');
+    }
+  }, [selectedCondition]);
+
   const handleSave = useCallback(async () => {
-    console.log('[ItemDetail] handleSave called', { id, processedBy });
+    console.log('[ItemDetail] handleSave called', { id, processedBy, selectedCondition, altroText });
     setSaving(true);
     try {
+      // Compute final AdjReason value
+      let adjReason = '';
+      if (selectedCondition === null) {
+        adjReason = '';
+      } else if (selectedCondition === 'other') {
+        adjReason = altroText.trim();
+      } else {
+        adjReason = selectedCondition;
+      }
+
+      const updatedOriginalData = { ...originalData, AdjReason: adjReason };
+      console.log('[ItemDetail] saving AdjReason:', adjReason);
+
       const { error } = await db
         .from('supplier_items')
         .update({
-          original_data: originalData,
+          original_data: updatedOriginalData,
           extra_data: extraData,
           status: 'completed',
           processed_at: new Date().toISOString(),
@@ -112,16 +166,18 @@ export default function ItemDetailScreen() {
         throw error;
       }
 
+      setOriginalData(updatedOriginalData);
       console.log('[ItemDetail] item saved successfully');
       showToast('Articolo salvato con successo', 'success');
       setTimeout(() => router.back(), 1200);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const e = err as { message?: string };
       console.error('[ItemDetail] handleSave error:', err);
-      showToast(err?.message ?? 'Errore durante il salvataggio', 'error');
+      showToast(e?.message ?? 'Errore durante il salvataggio', 'error');
     } finally {
       setSaving(false);
     }
-  }, [id, originalData, extraData, processedBy, showToast, router]);
+  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, showToast, router]);
 
   if (loading) {
     return (
@@ -180,7 +236,111 @@ export default function ItemDetailScreen() {
           )}
         </View>
 
-        {/* Original data section */}
+        {/* Condizione Articolo (AdjReason picker) */}
+        <View
+          style={{
+            backgroundColor: COLORS.surface,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
+              Condizione Articolo
+            </Text>
+          </View>
+
+          {CONDITIONS.map((condition, index) => {
+            const isSelected = selectedCondition === condition.value;
+            const isLast = index === CONDITIONS.length - 1;
+            const isAltro = condition.value === 'other';
+
+            return (
+              <View key={condition.value}>
+                <AnimatedPressable
+                  onPress={() => handleConditionPress(condition.value)}
+                >
+                  <View
+                    style={{
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      borderBottomWidth: isLast && !(isAltro && isSelected) ? 0 : 1,
+                      borderBottomColor: COLORS.border,
+                    }}
+                  >
+                    {/* Radio circle */}
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        backgroundColor: isSelected ? COLORS.primary : 'transparent',
+                        borderColor: isSelected ? COLORS.primary : COLORS.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {isSelected && (
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: '#FFFFFF',
+                          }}
+                        />
+                      )}
+                    </View>
+
+                    {/* Labels */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>
+                        {condition.label}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 1 }}>
+                        {condition.value}
+                      </Text>
+                    </View>
+                  </View>
+                </AnimatedPressable>
+
+                {/* ALTRO free-text input */}
+                {isAltro && isSelected && (
+                  <View style={{ marginTop: 8, marginHorizontal: 16, marginBottom: 12 }}>
+                    <TextInput
+                      value={altroText}
+                      onChangeText={(v) => {
+                        console.log('[ItemDetail] altroText changed:', v);
+                        setAltroText(v);
+                      }}
+                      placeholder="Descrivi il motivo..."
+                      placeholderTextColor={COLORS.textTertiary}
+                      autoFocus
+                      style={{
+                        backgroundColor: COLORS.surfaceSecondary,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        fontSize: 14,
+                        color: COLORS.text,
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Original data section — skip AdjReason key */}
         <View
           style={{
             backgroundColor: COLORS.surface,
@@ -194,32 +354,34 @@ export default function ItemDetailScreen() {
           <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
             Dati Fornitore
           </Text>
-          {Object.entries(originalData).map(([key, value]) => (
-            <View key={key} style={{ gap: 5 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {key}
-              </Text>
-              <TextInput
-                value={String(value ?? '')}
-                onChangeText={(v) => {
-                  console.log('[ItemDetail] originalData field changed:', key, v);
-                  setOriginalData(prev => ({ ...prev, [key]: v }));
-                }}
-                placeholder={`Valore per ${key}`}
-                placeholderTextColor={COLORS.textTertiary}
-                style={{
-                  backgroundColor: COLORS.surfaceSecondary,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: COLORS.border,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  fontSize: 14,
-                  color: COLORS.text,
-                }}
-              />
-            </View>
-          ))}
+          {Object.entries(originalData)
+            .filter(([key]) => key !== 'AdjReason')
+            .map(([key, value]) => (
+              <View key={key} style={{ gap: 5 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {key}
+                </Text>
+                <TextInput
+                  value={String(value ?? '')}
+                  onChangeText={(v) => {
+                    console.log('[ItemDetail] originalData field changed:', key, v);
+                    setOriginalData(prev => ({ ...prev, [key]: v }));
+                  }}
+                  placeholder={`Valore per ${key}`}
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={{
+                    backgroundColor: COLORS.surfaceSecondary,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 14,
+                    color: COLORS.text,
+                  }}
+                />
+              </View>
+            ))}
         </View>
 
         {/* Extra data section */}
