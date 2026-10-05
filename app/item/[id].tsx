@@ -32,7 +32,7 @@ const CONDITIONS = [
 const FIXED_VALUES = CONDITIONS.slice(0, 6).map(c => c.value);
 
 const SELEZIONE_OPTIONS = [
-  { value: 'A' as const, label: 'A', description: 'AMAZONPRICE −30%' },
+  { value: 'A' as const, label: 'A', description: 'AMAZONPRICE −35%' },
   { value: 'B' as const, label: 'B', description: 'AMAZONPRICE −50%' },
   { value: 'C' as const, label: 'C', description: 'AMAZONPRICE −70%' },
 ];
@@ -242,7 +242,7 @@ export default function ItemDetailScreen() {
     } else if (amazonPrice === null) {
       setPrezzoVendita('');
     } else if (selezione === 'A') {
-      setPrezzoVendita(formatPrice(amazonPrice * 0.70));
+      setPrezzoVendita(formatPrice(amazonPrice * 0.65));
     } else if (selezione === 'B') {
       setPrezzoVendita(formatPrice(amazonPrice * 0.50));
     } else if (selezione === 'C') {
