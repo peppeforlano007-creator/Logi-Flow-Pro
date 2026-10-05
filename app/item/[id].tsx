@@ -81,6 +81,10 @@ export default function ItemDetailScreen() {
   // Prezzo di Vendita state
   const [prezzoVendita, setPrezzoVendita] = useState('');
 
+  // SKU and Lotto state
+  const [skuVendita, setSkuVendita] = useState('');
+  const [lottoVendita, setLottoVendita] = useState('');
+
   // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
   const isMounted = useRef(false);
 
@@ -133,6 +137,11 @@ export default function ItemDetailScreen() {
         setPrezzoVendita(savedPrezzo);
       }
 
+      // Restore SKU and Lotto from extraData
+      setSkuVendita(fetchedItem.extra_data?.['SKU'] ?? '');
+      setLottoVendita(fetchedItem.extra_data?.['Lotto'] ?? '');
+      console.log('[ItemDetail] restoring SKU:', fetchedItem.extra_data?.['SKU'], 'Lotto:', fetchedItem.extra_data?.['Lotto']);
+
       // Fetch file for extra_columns
       const { data: fileData, error: fileError } = await db
         .from('supplier_files')
@@ -150,6 +159,9 @@ export default function ItemDetailScreen() {
           if (!(col in currentExtra)) currentExtra[col] = '';
         });
         setExtraData(currentExtra);
+        setSkuVendita(currentExtra['SKU'] ?? '');
+        setLottoVendita(currentExtra['Lotto'] ?? '');
+        setPrezzoVendita(currentExtra['PrezzoVendita'] ?? '');
       }
     } catch (err) {
       console.error('[ItemDetail] fetchData exception:', err);
@@ -227,8 +239,10 @@ export default function ItemDetailScreen() {
         ...extraData,
         Selezione: selezione ?? '',
         PrezzoVendita: prezzoVendita,
+        SKU: skuVendita,
+        Lotto: lottoVendita,
       };
-      console.log('[ItemDetail] saving extraData with Selezione and PrezzoVendita:', { Selezione: updatedExtraData.Selezione, PrezzoVendita: updatedExtraData.PrezzoVendita });
+      console.log('[ItemDetail] saving extraData:', { Selezione: updatedExtraData.Selezione, PrezzoVendita: updatedExtraData.PrezzoVendita, SKU: updatedExtraData.SKU, Lotto: updatedExtraData.Lotto });
 
       const { error } = await db
         .from('supplier_items')
@@ -258,7 +272,7 @@ export default function ItemDetailScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, showToast, router]);
+  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, showToast, router]);
 
   if (loading) {
     return (
@@ -569,6 +583,58 @@ export default function ItemDetailScreen() {
               placeholder="0,00"
               placeholderTextColor={COLORS.textTertiary}
               keyboardType="decimal-pad"
+              style={{
+                backgroundColor: COLORS.surfaceSecondary,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            />
+          </View>
+
+          {/* SKU */}
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              SKU
+            </Text>
+            <TextInput
+              value={skuVendita}
+              onChangeText={(v) => {
+                console.log('[ItemDetail] skuVendita changed:', v);
+                setSkuVendita(v);
+              }}
+              placeholder="Inserisci SKU"
+              placeholderTextColor={COLORS.textTertiary}
+              style={{
+                backgroundColor: COLORS.surfaceSecondary,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            />
+          </View>
+
+          {/* LOTTO */}
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              LOTTO
+            </Text>
+            <TextInput
+              value={lottoVendita}
+              onChangeText={(v) => {
+                console.log('[ItemDetail] lottoVendita changed:', v);
+                setLottoVendita(v);
+              }}
+              placeholder="Inserisci lotto"
+              placeholderTextColor={COLORS.textTertiary}
               style={{
                 backgroundColor: COLORS.surfaceSecondary,
                 borderRadius: 10,
