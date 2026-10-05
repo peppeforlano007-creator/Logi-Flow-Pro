@@ -56,6 +56,7 @@ export default function ExportScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [markingShortageId, setMarkingShortageId] = useState<string | null>(null);
 
   const fetchFiles = useCallback(async () => {
     console.log('[Export] fetchFiles called');
@@ -100,6 +101,42 @@ export default function ExportScreen() {
     fetchFiles();
   }, [fetchFiles]);
 
+  const handleMarkShortage = useCallback(async (fileId: string, fileName: string) => {
+    console.log('[Export] handleMarkShortage called', { fileId, fileName });
+    setMarkingShortageId(fileId);
+    try {
+      const { data: pendingItems, error: fetchError } = await db
+        .from('supplier_items')
+        .select('id, original_data')
+        .eq('file_id', fileId)
+        .eq('status', 'pending');
+
+      if (fetchError) throw fetchError;
+      if (!pendingItems || pendingItems.length === 0) {
+        showToast('Nessun articolo non ricevuto', 'info');
+        return;
+      }
+
+      const updates = pendingItems.map((item: any) =>
+        db
+          .from('supplier_items')
+          .update({
+            original_data: { ...item.original_data, AdjReason: 'shortage' },
+          })
+          .eq('id', item.id)
+      );
+      await Promise.all(updates);
+
+      console.log('[Export] marked', pendingItems.length, 'items as shortage');
+      showToast(`${pendingItems.length} articoli segnati come non ricevuti`, 'success');
+    } catch (err: any) {
+      console.error('[Export] handleMarkShortage error:', err);
+      showToast(err?.message ?? 'Errore', 'error');
+    } finally {
+      setMarkingShortageId(null);
+    }
+  }, [showToast]);
+
   const handleExport = useCallback(async (file: FileWithProgress) => {
     console.log('[Export] handleExport called', { fileId: file.id, fileName: file.file_name });
     setExportingId(file.id);
@@ -135,6 +172,7 @@ export default function ExportScreen() {
   const renderItem = useCallback(({ item, index }: { item: FileWithProgress; index: number }) => {
     const dateDisplay = formatDate(item.imported_at);
     const isExporting = exportingId === item.id;
+    const isMarkingShortage = markingShortageId === item.id;
     const progress = item.total_items > 0 ? item.completed_items / item.total_items : 0;
     const progressPercent = Math.round(progress * 100);
 
@@ -151,43 +189,69 @@ export default function ExportScreen() {
             boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text
-                style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 2 }}
-                numberOfLines={1}
-              >
-                {item.file_name}
+          {/* Row 1: file name + date */}
+          <View style={{ marginBottom: 10 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 2 }} numberOfLines={1}>
+              {item.file_name}
+            </Text>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{dateDisplay}</Text>
+          </View>
+
+          {/* Row 2: two buttons side by side */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            {/* Segna non ricevuti */}
+            <TouchableOpacity
+              onPress={() => handleMarkShortage(item.id, item.file_name)}
+              disabled={isMarkingShortage || isExporting}
+              activeOpacity={0.75}
+              style={{
+                flex: 1,
+                backgroundColor: isMarkingShortage ? '#FCA5A5' : '#FEE2E2',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5,
+              }}
+            >
+              {isMarkingShortage ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <FileText size={14} color="#EF4444" />
+              )}
+              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>
+                {isMarkingShortage ? '...' : 'Segna non ricevuti'}
               </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                {dateDisplay}
-              </Text>
-            </View>
+            </TouchableOpacity>
+
+            {/* Esporta */}
             <TouchableOpacity
               onPress={() => {
                 console.log('[Export] Esporta button pressed, fileId:', item.id);
                 handleExport(item);
               }}
-              disabled={isExporting}
+              disabled={isExporting || isMarkingShortage}
               activeOpacity={0.75}
               style={{
+                flex: 1,
                 backgroundColor: isExporting ? COLORS.accent + 'AA' : COLORS.accent,
                 borderRadius: 10,
-                paddingHorizontal: 12,
+                paddingHorizontal: 10,
                 paddingVertical: 8,
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                minWidth: 90,
                 justifyContent: 'center',
+                gap: 5,
               }}
             >
               {isExporting ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Download size={15} color="#FFFFFF" />
+                <Download size={14} color="#FFFFFF" />
               )}
-              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>
                 {isExporting ? '...' : 'Esporta'}
               </Text>
             </TouchableOpacity>
@@ -226,7 +290,7 @@ export default function ExportScreen() {
         </View>
       </AnimatedListItem>
     );
-  }, [exportingId, handleExport]);
+  }, [exportingId, markingShortageId, handleExport, handleMarkShortage]);
 
   const emptyState = (
     <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
