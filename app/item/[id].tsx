@@ -7,11 +7,10 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle, Clock, Camera, ChevronDown, ChevronUp, Search, X } from 'lucide-react-native';
-import { WebView } from 'react-native-webview';
+import { CheckCircle, Clock, Camera, ChevronDown, ChevronUp, Search } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { ScannerModal } from '@/components/ScannerModal';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
@@ -128,9 +127,6 @@ export default function ItemDetailScreen() {
 
   // Dati Fornitore collapsible state
   const [datiFornitoreOpen, setDatiFornitoreOpen] = useState(false);
-
-  // Web search modal state
-  const [webSearchVisible, setWebSearchVisible] = useState(false);
 
   // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
   const isMounted = useRef(false);
@@ -690,8 +686,8 @@ export default function ItemDetailScreen() {
               />
               <AnimatedPressable
                 onPress={() => {
-                  console.log('[ItemDetail] web search pressed, itemDesc:', itemDesc);
-                  setWebSearchVisible(true);
+                  console.log('[ItemDetail] web search pressed, url:', googleSearchUrl);
+                  WebBrowser.openBrowserAsync(googleSearchUrl);
                 }}
                 style={{
                   backgroundColor: COLORS.primary,
@@ -920,54 +916,6 @@ export default function ItemDetailScreen() {
         hint={scanTarget === 'sku' ? 'Scansiona barcode SKU' : 'Scansiona barcode LOTTO'}
       />
 
-      {/* WebView Search Modal */}
-      <Modal
-        visible={webSearchVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {
-          console.log('[ItemDetail] webSearch modal closed');
-          setWebSearchVisible(false);
-        }}
-      >
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          {/* Header */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            paddingTop: 16,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: COLORS.border,
-          }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text, flex: 1 }} numberOfLines={1}>
-              {itemDesc || 'Ricerca prezzo'}
-            </Text>
-            <AnimatedPressable
-              onPress={() => {
-                console.log('[ItemDetail] webSearch modal close button pressed');
-                setWebSearchVisible(false);
-              }}
-              style={{ padding: 4 }}
-            >
-              <X size={22} color={COLORS.textSecondary} />
-            </AnimatedPressable>
-          </View>
-          {/* WebView */}
-          <WebView
-            source={{ uri: googleSearchUrl }}
-            style={{ flex: 1 }}
-            startInLoadingState
-            renderLoading={() => (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-              </View>
-            )}
-          />
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
