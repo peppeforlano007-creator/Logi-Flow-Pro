@@ -258,7 +258,6 @@ export default function ExportScreen() {
 
       {loading ? (
         <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
         >
           <SkeletonList count={4} />
@@ -268,7 +267,6 @@ export default function ExportScreen() {
           data={files}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 16, paddingBottom: 120, flexGrow: 1 }}
           ListEmptyComponent={emptyState}
           refreshControl={

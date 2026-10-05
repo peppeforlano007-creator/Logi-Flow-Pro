@@ -4,12 +4,9 @@ export default function ExportLayout() {
   return (
     <Stack
       screenOptions={{
-        headerTransparent: true,
+        headerTransparent: false,
         headerShadowVisible: false,
-        headerLargeTitleShadowVisible: false,
-        headerLargeStyle: { backgroundColor: 'transparent' },
-        headerBlurEffect: 'none',
-        headerLargeTitle: true,
+        headerLargeTitle: false,
         headerBackButtonDisplayMode: 'minimal',
       }}
     />
