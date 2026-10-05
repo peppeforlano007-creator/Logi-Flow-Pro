@@ -4,17 +4,31 @@ import {
   Text,
   FlatList,
   Animated,
-  ScrollView,
+  TextInput,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { Wrench, ChevronRight } from 'lucide-react-native';
+import { Wrench, ChevronRight, Package } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
-import { FileStatusBadge } from '@/components/StatusBadge';
-import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { ItemStatusBadge } from '@/components/StatusBadge';
 import { SkeletonList } from '@/components/SkeletonLoader';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { db } from '@/utils/db';
-import type { SupplierFile } from '@/types';
+import type { SupplierItem } from '@/types';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type ToggleColumn = 'PkgID' | 'LPN';
+
+interface ItemWithFile extends SupplierItem {
+  supplier_files: {
+    file_name: string;
+    extra_columns: string[];
+  } | null;
+}
+
+// ─── AnimatedListItem ─────────────────────────────────────────────────────────
 
 function AnimatedListItem({ index, children }: { index: number; children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -34,46 +48,36 @@ function AnimatedListItem({ index, children }: { index: number; children: React.
   );
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-interface FileWithProgress extends SupplierFile {
-  total_items: number;
-  completed_items: number;
-}
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function LavorazioneScreen() {
   const router = useRouter();
-  const [files, setFiles] = useState<FileWithProgress[]>([]);
+  const [items, setItems] = useState<ItemWithFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedColumn, setSelectedColumn] = useState<ToggleColumn>('PkgID');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchFiles = useCallback(async () => {
-    console.log('[Lavorazione] fetchFiles called');
+  // ── Data fetching ────────────────────────────────────────────────────────
+
+  const fetchItems = useCallback(async () => {
+    console.log('[Lavorazione] fetchItems called');
     try {
       const { data, error } = await db
-        .from('supplier_files')
-        .select('*, supplier_items(status)')
-        .in('status', ['received', 'processing'])
-        .order('imported_at', { ascending: false });
+        .from('supplier_items')
+        .select('*, supplier_files(file_name, extra_columns)')
+        .eq('status', 'processing')
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('[Lavorazione] fetchFiles error:', error);
+        console.error('[Lavorazione] fetchItems error:', error);
         throw error;
       }
 
-      console.log('[Lavorazione] fetchFiles success, count:', data?.length);
-      const mapped: FileWithProgress[] = (data || []).map((f: any) => {
-        const items: { status: string }[] = f.supplier_items ?? [];
-        const total_items = items.length;
-        const completed_items = items.filter(i => i.status === 'completed').length;
-        return { ...f, total_items, completed_items };
-      });
-      setFiles(mapped);
+      console.log('[Lavorazione] fetchItems success, count:', data?.length ?? 0);
+      setItems((data as ItemWithFile[]) ?? []);
     } catch (err) {
-      console.error('[Lavorazione] fetchFiles exception:', err);
+      console.error('[Lavorazione] fetchItems exception:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -82,138 +86,276 @@ export default function LavorazioneScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchFiles();
-    }, [fetchFiles]),
+      fetchItems();
+    }, [fetchItems]),
   );
 
   const handleRefresh = useCallback(() => {
-    console.log('[Lavorazione] handleRefresh called');
+    console.log('[Lavorazione] handleRefresh triggered');
     setRefreshing(true);
-    fetchFiles();
-  }, [fetchFiles]);
+    fetchItems();
+  }, [fetchItems]);
 
-  const handleCardPress = useCallback((fileId: string, fileName: string) => {
-    console.log('[Lavorazione] handleCardPress', { fileId, fileName });
-    router.push(`/file/${fileId}` as any);
+  // ── Filtering ────────────────────────────────────────────────────────────
+
+  const filteredItems = searchQuery.trim() === ''
+    ? items
+    : items.filter(item => {
+        const value = String(item.original_data?.[selectedColumn] ?? '');
+        return value.toLowerCase().includes(searchQuery.toLowerCase());
+      });
+
+  const totalCount = items.length;
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleToggle = useCallback((col: ToggleColumn) => {
+    console.log('[Lavorazione] toggle column:', col);
+    setSelectedColumn(col);
+    setSearchQuery('');
+  }, []);
+
+  const handleSearchChange = useCallback((text: string) => {
+    console.log('[Lavorazione] search query changed:', text);
+    setSearchQuery(text);
+  }, []);
+
+  const handleItemPress = useCallback((item: ItemWithFile) => {
+    const identifier = item.original_data?.['PkgID'] ?? item.original_data?.['LPN'] ?? item.item_code;
+    console.log('[Lavorazione] item pressed:', { id: item.id, identifier });
+    router.push(`/item/${item.id}` as any);
   }, [router]);
 
-  const renderItem = useCallback(({ item, index }: { item: FileWithProgress; index: number }) => {
-    const dateDisplay = formatDate(item.imported_at);
-    const progress = item.total_items > 0 ? item.completed_items / item.total_items : 0;
-    const progressPercent = Math.round(progress * 100);
+  // ── Render helpers ────────────────────────────────────────────────────────
+
+  const renderItem = useCallback(({ item, index }: { item: ItemWithFile; index: number }) => {
+    const identifier = item.original_data?.['PkgID'] ?? item.original_data?.['LPN'] ?? item.item_code;
+    const fileName = item.supplier_files?.file_name ?? '—';
+    const itemStatus = item.status as 'pending' | 'processing' | 'completed';
 
     return (
       <AnimatedListItem index={index}>
-        <AnimatedPressable onPress={() => handleCardPress(item.id, item.file_name)}>
+        <AnimatedPressable onPress={() => handleItemPress(item)}>
           <View
             style={{
               backgroundColor: COLORS.surface,
               borderRadius: 14,
               padding: 16,
-              marginBottom: 12,
+              marginBottom: 10,
               borderWidth: 1,
               borderColor: COLORS.border,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text
-                  style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 2 }}
-                  numberOfLines={1}
-                >
-                  {item.file_name}
-                </Text>
-                <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                  {dateDisplay}
-                </Text>
+            {/* Icon */}
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                backgroundColor: COLORS.statusProcessingBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Package size={18} color={COLORS.statusProcessing} />
+            </View>
+
+            {/* Text block */}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 2 }}
+                numberOfLines={1}
+              >
+                {identifier}
+              </Text>
+              <Text
+                style={{ fontSize: 12, color: COLORS.textSecondary }}
+                numberOfLines={1}
+              >
+                {fileName}
+              </Text>
+              <View style={{ marginTop: 6 }}>
+                <ItemStatusBadge status={itemStatus} size="sm" />
               </View>
-              <ChevronRight size={18} color={COLORS.textTertiary} />
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <FileStatusBadge status={item.status} />
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontVariant: ['tabular-nums'] }}>
-                {item.completed_items}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                /
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontVariant: ['tabular-nums'] }}>
-                {item.total_items}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                completati
-              </Text>
-            </View>
-
-            {/* Progress bar */}
-            <View style={{ height: 6, backgroundColor: COLORS.surfaceSecondary, borderRadius: 3, overflow: 'hidden' }}>
-              <View
-                style={{
-                  height: '100%',
-                  width: `${progressPercent}%`,
-                  backgroundColor: progress === 1 ? COLORS.accent : COLORS.primary,
-                  borderRadius: 3,
-                }}
-              />
-            </View>
-            <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 4, textAlign: 'right' }}>
-              {progressPercent}%
-            </Text>
+            {/* Chevron */}
+            <ChevronRight size={18} color={COLORS.textTertiary} />
           </View>
         </AnimatedPressable>
       </AnimatedListItem>
     );
-  }, [handleCardPress]);
+  }, [handleItemPress]);
+
+  // ── Header (summary + toggle + search) ───────────────────────────────────
+
+  const countLabel = totalCount === 1 ? '1 articolo da lavorare' : `${totalCount} articoli da lavorare`;
+
+  const listHeader = (
+    <View style={{ marginBottom: 8 }}>
+      {/* Summary card */}
+      <View
+        style={{
+          backgroundColor: COLORS.surface,
+          borderRadius: 14,
+          padding: 14,
+          marginBottom: 14,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 9,
+            backgroundColor: COLORS.statusProcessingBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Wrench size={16} color={COLORS.statusProcessing} />
+        </View>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }}>
+          {countLabel}
+        </Text>
+      </View>
+
+      {/* Toggle label */}
+      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8, letterSpacing: 0.4 }}>
+        Cerca per:
+      </Text>
+
+      {/* PkgID / LPN pill toggle */}
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: COLORS.surface,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          padding: 3,
+          marginBottom: 12,
+          alignSelf: 'flex-start',
+        }}
+      >
+        {(['PkgID', 'LPN'] as ToggleColumn[]).map(col => {
+          const isActive = selectedColumn === col;
+          return (
+            <TouchableOpacity
+              key={col}
+              onPress={() => handleToggle(col)}
+              style={{
+                paddingHorizontal: 20,
+                paddingVertical: 7,
+                borderRadius: 8,
+                backgroundColor: isActive ? COLORS.primary : 'transparent',
+                borderWidth: isActive ? 0 : 1,
+                borderColor: isActive ? 'transparent' : COLORS.border,
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: isActive ? '#FFFFFF' : COLORS.textSecondary,
+                }}
+              >
+                {col}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Search input */}
+      <View
+        style={{
+          backgroundColor: COLORS.surface,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          marginBottom: 16,
+        }}
+      >
+        <TextInput
+          value={searchQuery}
+          onChangeText={handleSearchChange}
+          placeholder="Inserisci codice..."
+          placeholderTextColor={COLORS.textTertiary}
+          style={{ fontSize: 14, color: COLORS.text, padding: 0 }}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
+      </View>
+    </View>
+  );
+
+  // ── Empty state ───────────────────────────────────────────────────────────
 
   const emptyState = (
-    <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
+    <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
       <View
         style={{
           width: 72,
           height: 72,
           borderRadius: 20,
-          backgroundColor: 'rgba(124, 58, 237, 0.10)',
+          backgroundColor: COLORS.statusProcessingBg,
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: 16,
         }}
       >
-        <Wrench size={32} color="#7C3AED" />
+        <Wrench size={32} color={COLORS.statusProcessing} />
       </View>
       <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' }}>
-        Nessun file in lavorazione
+        Nessun articolo ricevuto
       </Text>
       <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 }}>
-        I file con stato "Ricevuto" o "In Lavorazione" appariranno qui.
+        Scansiona i colli nella sezione Ricezione per iniziare.
       </Text>
     </View>
   );
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <Stack.Screen options={{ title: 'Lavorazione' }} />
 
       {loading ? (
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
-        >
-          <SkeletonList count={3} />
-        </ScrollView>
+        <View style={{ padding: 16, paddingBottom: 120 }}>
+          <SkeletonList count={5} />
+        </View>
       ) : (
         <FlatList
-          data={files}
+          data={filteredItems}
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 16, paddingBottom: 120, flexGrow: 1 }}
+          ListHeaderComponent={listHeader}
           ListEmptyComponent={emptyState}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
           }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         />
       )}
     </View>
