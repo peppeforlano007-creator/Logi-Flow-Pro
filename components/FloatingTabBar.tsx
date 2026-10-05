@@ -155,14 +155,14 @@ export default function FloatingTabBar({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom']} pointerEvents="box-none">
       <View style={[
         styles.container,
         {
           width: containerWidth,
           marginBottom: bottomMargin ?? 20
         }
-      ]}>
+      ]} pointerEvents="box-none">
         <BlurView
           intensity={80}
           style={[dynamicStyles.blurContainer, { borderRadius }]}
