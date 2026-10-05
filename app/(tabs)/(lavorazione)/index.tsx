@@ -368,7 +368,6 @@ export default function LavorazioneScreen() {
           data={filteredItems}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 16, paddingBottom: 120, flexGrow: 1 }}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={emptyState}

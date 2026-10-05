@@ -441,7 +441,6 @@ export default function ImportScreen() {
 
       {loading ? (
         <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
         >
           <SkeletonList count={4} />
@@ -451,7 +450,6 @@ export default function ImportScreen() {
           data={files}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             padding: 16,
             paddingBottom: 120,

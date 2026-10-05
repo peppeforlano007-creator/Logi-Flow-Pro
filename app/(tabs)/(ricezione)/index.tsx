@@ -341,7 +341,7 @@ export default function RicezioneScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-      <Stack.Screen options={{ title: 'Ricezione', headerLargeTitle: true }} />
+      <Stack.Screen options={{ title: 'Ricezione' }} />
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -359,7 +359,6 @@ export default function RicezioneScreen() {
         </View>
       ) : (
         <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
