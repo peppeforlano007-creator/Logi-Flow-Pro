@@ -9,10 +9,11 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { Upload, FileText, ChevronRight, Plus, X, Check } from 'lucide-react-native';
+import { Upload, FileText, ChevronRight, Plus, X, Check, Trash2 } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { FileStatusBadge, FormatBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -75,6 +76,7 @@ export default function ImportScreen() {
   const [files, setFiles] = useState<FileWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Import modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -271,6 +273,47 @@ export default function ImportScreen() {
     }
   }, [selectedFile, importedBy, fetchFiles, showToast]);
 
+  const handleDeleteFile = useCallback(async (fileId: string, fileName: string) => {
+    console.log('[Import] handleDeleteFile called', { fileId, fileName });
+    Alert.alert(
+      'Elimina lista',
+      `Vuoi eliminare "${fileName}" e tutti i suoi articoli? L'operazione non è reversibile.`,
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('[Import] Delete confirmed for fileId:', fileId);
+            setDeletingId(fileId);
+            try {
+              const { error: itemsError } = await db
+                .from('supplier_items')
+                .delete()
+                .eq('file_id', fileId);
+              if (itemsError) throw itemsError;
+
+              const { error: fileError } = await db
+                .from('supplier_files')
+                .delete()
+                .eq('id', fileId);
+              if (fileError) throw fileError;
+
+              setFiles(prev => prev.filter(f => f.id !== fileId));
+              showToast(`"${fileName}" eliminata`, 'success');
+              console.log('[Import] File deleted successfully:', fileId);
+            } catch (err: any) {
+              console.error('[Import] handleDeleteFile error:', err);
+              showToast(err?.message ?? 'Errore durante l\'eliminazione', 'error');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [showToast]);
+
   const handleCardPress = useCallback((fileId: string, fileName: string) => {
     console.log('[Import] handleCardPress', { fileId, fileName });
     router.push(`/file/${fileId}` as any);
@@ -306,7 +349,26 @@ export default function ImportScreen() {
                   {dateDisplay}
                 </Text>
               </View>
-              <ChevronRight size={18} color={COLORS.textTertiary} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <AnimatedPressable
+                    onPress={() => {
+                      console.log('[Import] Delete button pressed', { fileId: item.id, fileName: item.file_name });
+                      handleDeleteFile(item.id, item.file_name);
+                    }}
+                    disabled={deletingId === item.id}
+                  >
+                    <View style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      backgroundColor: '#FEE2E2',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {deletingId === item.id
+                        ? <ActivityIndicator size="small" color="#EF4444" />
+                        : <Trash2 size={15} color="#EF4444" />}
+                    </View>
+                  </AnimatedPressable>
+                  <ChevronRight size={18} color={COLORS.textTertiary} />
+                </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               <FormatBadge format={item.original_format} />
@@ -331,7 +393,7 @@ export default function ImportScreen() {
         </AnimatedPressable>
       </AnimatedListItem>
     );
-  }, [handleCardPress]);
+  }, [handleCardPress, handleDeleteFile, deletingId]);
 
   const emptyState = (
     <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 }}>
