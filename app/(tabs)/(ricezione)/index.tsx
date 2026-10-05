@@ -249,11 +249,26 @@ export default function RicezioneScreen() {
           }
         }
 
+        // Update file status to 'processing' for each involved file (if not already)
+        for (const [fileId, { file }] of fileMap.entries()) {
+          if (file.status !== 'processing' && file.status !== 'received' && file.status !== 'completed') {
+            console.log('[Ricezione] Updating file status to processing:', fileId);
+            const { error: fileStatusErr } = await db
+              .from('supplier_files')
+              .update({ status: 'processing' })
+              .eq('id', fileId);
+            if (fileStatusErr) console.error('[Ricezione] file status update error:', fileStatusErr);
+          }
+        }
+
         // Optimistic local update
         const matchedIds = new Set(matched.map(m => m.id));
+        const involvedFileIds = new Set(fileMap.keys());
         setActiveFiles(prev =>
           prev.map(({ file, items }) => ({
-            file,
+            file: involvedFileIds.has(file.id) && file.status !== 'processing' && file.status !== 'received' && file.status !== 'completed'
+              ? { ...file, status: 'processing' as any }
+              : file,
             items: items.map(item => {
               if (!matchedIds.has(item.id)) return item;
               return {
