@@ -9,7 +9,8 @@ import {
   Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle, Clock } from 'lucide-react-native';
+import { CheckCircle, Clock, Camera } from 'lucide-react-native';
+import { ScannerModal } from '@/components/ScannerModal';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -84,6 +85,9 @@ export default function ItemDetailScreen() {
   // SKU and Lotto state
   const [skuVendita, setSkuVendita] = useState('');
   const [lottoVendita, setLottoVendita] = useState('');
+
+  // Scanner state
+  const [scanTarget, setScanTarget] = useState<'sku' | 'lotto' | null>(null);
 
   // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
   const isMounted = useRef(false);
@@ -601,25 +605,42 @@ export default function ItemDetailScreen() {
             <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               SKU
             </Text>
-            <TextInput
-              value={skuVendita}
-              onChangeText={(v) => {
-                console.log('[ItemDetail] skuVendita changed:', v);
-                setSkuVendita(v);
-              }}
-              placeholder="Inserisci SKU"
-              placeholderTextColor={COLORS.textTertiary}
-              style={{
-                backgroundColor: COLORS.surfaceSecondary,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                fontSize: 15,
-                color: COLORS.text,
-              }}
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                value={skuVendita}
+                onChangeText={(v) => {
+                  console.log('[ItemDetail] skuVendita changed:', v);
+                  setSkuVendita(v);
+                }}
+                placeholder="Inserisci SKU"
+                placeholderTextColor={COLORS.textTertiary}
+                style={{
+                  flex: 1,
+                  backgroundColor: COLORS.surfaceSecondary,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  color: COLORS.text,
+                }}
+              />
+              <AnimatedPressable onPress={() => {
+                console.log('[ItemDetail] scan SKU button pressed');
+                setScanTarget('sku');
+              }}>
+                <View style={{
+                  width: 42, height: 42,
+                  borderRadius: 10,
+                  backgroundColor: COLORS.primaryMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Camera size={20} color={COLORS.primary} />
+                </View>
+              </AnimatedPressable>
+            </View>
           </View>
 
           {/* LOTTO */}
@@ -627,25 +648,42 @@ export default function ItemDetailScreen() {
             <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               LOTTO
             </Text>
-            <TextInput
-              value={lottoVendita}
-              onChangeText={(v) => {
-                console.log('[ItemDetail] lottoVendita changed:', v);
-                setLottoVendita(v);
-              }}
-              placeholder="Inserisci lotto"
-              placeholderTextColor={COLORS.textTertiary}
-              style={{
-                backgroundColor: COLORS.surfaceSecondary,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                fontSize: 15,
-                color: COLORS.text,
-              }}
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                value={lottoVendita}
+                onChangeText={(v) => {
+                  console.log('[ItemDetail] lottoVendita changed:', v);
+                  setLottoVendita(v);
+                }}
+                placeholder="Inserisci lotto"
+                placeholderTextColor={COLORS.textTertiary}
+                style={{
+                  flex: 1,
+                  backgroundColor: COLORS.surfaceSecondary,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  color: COLORS.text,
+                }}
+              />
+              <AnimatedPressable onPress={() => {
+                console.log('[ItemDetail] scan LOTTO button pressed');
+                setScanTarget('lotto');
+              }}>
+                <View style={{
+                  width: 42, height: 42,
+                  borderRadius: 10,
+                  backgroundColor: COLORS.primaryMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Camera size={20} color={COLORS.primary} />
+                </View>
+              </AnimatedPressable>
+            </View>
           </View>
         </View>
 
@@ -773,6 +811,18 @@ export default function ItemDetailScreen() {
         type={toast.type}
         visible={toast.visible}
         onHide={hideToast}
+      />
+
+      <ScannerModal
+        visible={scanTarget !== null}
+        onClose={() => setScanTarget(null)}
+        onScanned={(code) => {
+          console.log('[ItemDetail] barcode scanned:', code, 'target:', scanTarget);
+          if (scanTarget === 'sku') setSkuVendita(code);
+          else if (scanTarget === 'lotto') setLottoVendita(code);
+          setScanTarget(null);
+        }}
+        hint={scanTarget === 'sku' ? 'Scansiona barcode SKU' : 'Scansiona barcode LOTTO'}
       />
     </KeyboardAvoidingView>
   );
