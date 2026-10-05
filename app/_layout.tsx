@@ -1,7 +1,7 @@
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -17,7 +17,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-// Note: Error logging is auto-initialized via index.ts import
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 // Only wrap with ErrorBoundary in dev — production apps should not include it
 const DevErrorBoundary = __DEV__
@@ -28,8 +28,43 @@ const DevErrorBoundary = __DEV__
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)", // Ensure any route can link back to `/`
+  initialRouteName: "(tabs)",
 };
+
+function AuthGate() {
+  const { user, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthGroup = segments[0] === "login";
+    const inAdminGroup = segments[0] === "admin";
+
+    console.log(
+      "[AuthGate] user:",
+      user?.username ?? "null",
+      "segments:",
+      segments.join("/"),
+      "loading:",
+      loading
+    );
+
+    if (!user && !inAuthGroup) {
+      console.log("[AuthGate] Not authenticated — redirecting to /login");
+      router.replace("/login");
+    } else if (user && inAuthGroup) {
+      console.log("[AuthGate] Authenticated — redirecting to /(tabs)/(import)");
+      router.replace("/(tabs)/(import)");
+    } else if (user && inAdminGroup && user.role !== "admin") {
+      console.log("[AuthGate] Non-admin accessing admin — redirecting to /(tabs)/(import)");
+      router.replace("/(tabs)/(import)");
+    }
+  }, [user, loading, segments, router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -60,47 +95,52 @@ export default function RootLayout() {
     ...DefaultTheme,
     dark: false,
     colors: {
-      primary: "rgb(0, 122, 255)", // System Blue
-      background: "rgb(242, 242, 247)", // Light mode background
-      card: "rgb(255, 255, 255)", // White cards/surfaces
-      text: "rgb(0, 0, 0)", // Black text for light mode
-      border: "rgb(216, 216, 220)", // Light gray for separators/borders
-      notification: "rgb(255, 59, 48)", // System Red
+      primary: "rgb(0, 122, 255)",
+      background: "rgb(242, 242, 247)",
+      card: "rgb(255, 255, 255)",
+      text: "rgb(0, 0, 0)",
+      border: "rgb(216, 216, 220)",
+      notification: "rgb(255, 59, 48)",
     },
   };
 
   const CustomDarkTheme: Theme = {
     ...DarkTheme,
     colors: {
-      primary: "rgb(10, 132, 255)", // System Blue (Dark Mode)
-      background: "rgb(1, 1, 1)", // True black background for OLED displays
-      card: "rgb(28, 28, 30)", // Dark card/surface color
-      text: "rgb(255, 255, 255)", // White text for dark mode
-      border: "rgb(44, 44, 46)", // Dark gray for separators/borders
-      notification: "rgb(255, 69, 58)", // System Red (Dark Mode)
+      primary: "rgb(10, 132, 255)",
+      background: "rgb(1, 1, 1)",
+      card: "rgb(28, 28, 30)",
+      text: "rgb(255, 255, 255)",
+      border: "rgb(44, 44, 46)",
+      notification: "rgb(255, 69, 58)",
     },
   };
+
   return (
     <DevErrorBoundary>
       <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
-          <SafeAreaProvider>
+      <ThemeProvider
+        value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+      >
+        <SafeAreaProvider>
+          <AuthProvider>
             <WidgetProvider>
               <GestureHandlerRootView>
-              <Stack>
-                {/* Main app with tabs */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="file/[id]" options={{ headerShown: true }} />
-                <Stack.Screen name="item/[id]" options={{ headerShown: true }} />
-                <Stack.Screen name="reception/[fileId]" options={{ headerShown: true }} />
-              </Stack>
-              <SystemBars style={"auto"} />
+                <AuthGate />
+                <Stack>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
+                  <Stack.Screen name="admin" options={{ headerShown: false }} />
+                  <Stack.Screen name="file/[id]" options={{ headerShown: true }} />
+                  <Stack.Screen name="item/[id]" options={{ headerShown: true }} />
+                  <Stack.Screen name="reception/[fileId]" options={{ headerShown: true }} />
+                </Stack>
+                <SystemBars style={"auto"} />
               </GestureHandlerRootView>
             </WidgetProvider>
-          </SafeAreaProvider>
-        </ThemeProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </ThemeProvider>
     </DevErrorBoundary>
   );
 }
