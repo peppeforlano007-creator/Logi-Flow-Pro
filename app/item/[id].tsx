@@ -32,9 +32,9 @@ const CONDITIONS = [
 const FIXED_VALUES = CONDITIONS.slice(0, 6).map(c => c.value);
 
 const SELEZIONE_OPTIONS = [
-  { value: 'A' as const, label: 'A', description: 'Prezzo intero (UNITCOST)' },
-  { value: 'B' as const, label: 'B', description: 'UNITCOST −30%' },
-  { value: 'C' as const, label: 'C', description: 'UNITCOST −50%' },
+  { value: 'A' as const, label: 'A', description: 'AMAZONPRICE −30%' },
+  { value: 'B' as const, label: 'B', description: 'AMAZONPRICE −50%' },
+  { value: 'C' as const, label: 'C', description: 'AMAZONPRICE −70%' },
 ];
 
 function formatDate(dateStr: string): string {
@@ -77,8 +77,16 @@ function parseUnitCost(data: Record<string, string>): number | null {
   return isNaN(n) ? null : n;
 }
 
+function parseAmazonPrice(data: Record<string, string>): number | null {
+  const key = Object.keys(data).find(k => k.toLowerCase() === 'amazonprice');
+  if (!key) return null;
+  const raw = String(data[key] ?? '').replace(',', '.');
+  const n = parseFloat(raw);
+  return isNaN(n) ? null : n;
+}
+
 function formatPrice(n: number): string {
-  return n.toFixed(2).replace('.', ',');
+  return n.toFixed(2); // punto, non virgola
 }
 
 export default function ItemDetailScreen() {
@@ -227,18 +235,18 @@ export default function ItemDetailScreen() {
     if (!isMounted.current) return;
 
     console.log('[ItemDetail] selezione changed, recomputing prezzoVendita:', selezione);
-    const unitCost = parseUnitCost(originalData);
+    const amazonPrice = parseAmazonPrice(originalData);
 
     if (selezione === null) {
       setPrezzoVendita('');
-    } else if (unitCost === null) {
+    } else if (amazonPrice === null) {
       setPrezzoVendita('');
     } else if (selezione === 'A') {
-      setPrezzoVendita(formatPrice(unitCost));
+      setPrezzoVendita(formatPrice(amazonPrice * 0.70));
     } else if (selezione === 'B') {
-      setPrezzoVendita(formatPrice(unitCost * 0.70));
+      setPrezzoVendita(formatPrice(amazonPrice * 0.50));
     } else if (selezione === 'C') {
-      setPrezzoVendita(formatPrice(unitCost * 0.50));
+      setPrezzoVendita(formatPrice(amazonPrice * 0.30));
     }
   }, [selezione]); // eslint-disable-line react-hooks/exhaustive-deps
 
