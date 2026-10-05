@@ -7,9 +7,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle, Clock, Camera, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { CheckCircle, Clock, Camera, ChevronDown, ChevronUp, Search, X } from 'lucide-react-native';
+import { WebView } from 'react-native-webview';
 import { ScannerModal } from '@/components/ScannerModal';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
@@ -126,6 +128,9 @@ export default function ItemDetailScreen() {
 
   // Dati Fornitore collapsible state
   const [datiFornitoreOpen, setDatiFornitoreOpen] = useState(false);
+
+  // Web search modal state
+  const [webSearchVisible, setWebSearchVisible] = useState(false);
 
   // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
   const isMounted = useRef(false);
@@ -329,6 +334,9 @@ export default function ItemDetailScreen() {
       setSaving(false);
     }
   }, [id, originalData, extraData, user, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, eanCorretto, asinCorretto, showToast, router]);
+
+  const itemDesc = getOriginalField(originalData, 'ITEMDESC');
+  const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(itemDesc + ' prezzo')}`;
 
   if (loading) {
     return (
@@ -658,26 +666,44 @@ export default function ItemDetailScreen() {
             <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Prezzo di Vendita
             </Text>
-            <TextInput
-              value={prezzoVendita}
-              onChangeText={(v) => {
-                console.log('[ItemDetail] prezzoVendita changed:', v);
-                setPrezzoVendita(v);
-              }}
-              placeholder="0,00"
-              placeholderTextColor={COLORS.textTertiary}
-              keyboardType="decimal-pad"
-              style={{
-                backgroundColor: COLORS.surfaceSecondary,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                fontSize: 15,
-                color: COLORS.text,
-              }}
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                value={prezzoVendita}
+                onChangeText={(v) => {
+                  console.log('[ItemDetail] prezzoVendita changed:', v);
+                  setPrezzoVendita(v);
+                }}
+                placeholder="0.00"
+                placeholderTextColor={COLORS.textTertiary}
+                keyboardType="decimal-pad"
+                style={{
+                  flex: 1,
+                  backgroundColor: COLORS.surfaceSecondary,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  color: COLORS.text,
+                }}
+              />
+              <AnimatedPressable
+                onPress={() => {
+                  console.log('[ItemDetail] web search pressed, itemDesc:', itemDesc);
+                  setWebSearchVisible(true);
+                }}
+                style={{
+                  backgroundColor: COLORS.primary,
+                  borderRadius: 10,
+                  padding: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Search size={18} color="#fff" />
+              </AnimatedPressable>
+            </View>
           </View>
 
           {/* EAN Corretto */}
@@ -893,6 +919,55 @@ export default function ItemDetailScreen() {
         }}
         hint={scanTarget === 'sku' ? 'Scansiona barcode SKU' : 'Scansiona barcode LOTTO'}
       />
+
+      {/* WebView Search Modal */}
+      <Modal
+        visible={webSearchVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          console.log('[ItemDetail] webSearch modal closed');
+          setWebSearchVisible(false);
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: COLORS.border,
+          }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text, flex: 1 }} numberOfLines={1}>
+              {itemDesc || 'Ricerca prezzo'}
+            </Text>
+            <AnimatedPressable
+              onPress={() => {
+                console.log('[ItemDetail] webSearch modal close button pressed');
+                setWebSearchVisible(false);
+              }}
+              style={{ padding: 4 }}
+            >
+              <X size={22} color={COLORS.textSecondary} />
+            </AnimatedPressable>
+          </View>
+          {/* WebView */}
+          <WebView
+            source={{ uri: googleSearchUrl }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
