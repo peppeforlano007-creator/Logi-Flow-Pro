@@ -16,6 +16,7 @@ import { ItemStatusBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { ToastMessage, useToast } from '@/components/ToastMessage';
 import { db } from '@/utils/db';
+import { useAuth } from '@/contexts/AuthContext';
 import type { SupplierItem, SupplierFile } from '@/types';
 
 const CONDITIONS = [
@@ -84,6 +85,7 @@ export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { toast, showToast, hideToast } = useToast();
+  const { user } = useAuth();
 
   const [item, setItem] = useState<SupplierItem | null>(null);
   const [file, setFile] = useState<SupplierFile | null>(null);
@@ -92,7 +94,6 @@ export default function ItemDetailScreen() {
 
   const [originalData, setOriginalData] = useState<Record<string, string>>({});
   const [extraData, setExtraData] = useState<Record<string, string>>({});
-  const [processedBy, setProcessedBy] = useState('');
 
   // AdjReason condition picker state
   const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
@@ -140,7 +141,6 @@ export default function ItemDetailScreen() {
       setItem(fetchedItem);
       setOriginalData({ ...(fetchedItem.original_data ?? {}) });
       setExtraData({ ...(fetchedItem.extra_data ?? {}) });
-      if (fetchedItem.processed_by) setProcessedBy(fetchedItem.processed_by);
 
       // Pre-select AdjReason condition from loaded data
       const adjValue: string = fetchedItem.original_data?.['AdjReason'] ?? '';
@@ -265,7 +265,7 @@ export default function ItemDetailScreen() {
   }, [selezione]);
 
   const handleSave = useCallback(async () => {
-    console.log('[ItemDetail] handleSave called', { id, processedBy, selectedCondition, altroText, selezione, prezzoVendita });
+    console.log('[ItemDetail] handleSave called', { id, processedBy: user?.username ?? '', selectedCondition, altroText, selezione, prezzoVendita });
     setSaving(true);
     try {
       // Compute final AdjReason value
@@ -299,7 +299,7 @@ export default function ItemDetailScreen() {
           extra_data: updatedExtraData,
           status: 'completed',
           processed_at: new Date().toISOString(),
-          processed_by: processedBy || null,
+          processed_by: user?.username || null,
         })
         .eq('id', id);
 
@@ -320,7 +320,7 @@ export default function ItemDetailScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, eanCorretto, asinCorretto, showToast, router]);
+  }, [id, originalData, extraData, user, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, eanCorretto, asinCorretto, showToast, router]);
 
   if (loading) {
     return (
@@ -826,14 +826,7 @@ export default function ItemDetailScreen() {
             <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text }}>
               Lavorato da
             </Text>
-            <TextInput
-              value={processedBy}
-              onChangeText={(v) => {
-                console.log('[ItemDetail] processedBy changed:', v);
-                setProcessedBy(v);
-              }}
-              placeholder="Nome dipendente"
-              placeholderTextColor={COLORS.textTertiary}
+            <View
               style={{
                 backgroundColor: COLORS.surfaceSecondary,
                 borderRadius: 12,
@@ -841,10 +834,12 @@ export default function ItemDetailScreen() {
                 borderColor: COLORS.border,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
-                fontSize: 15,
-                color: COLORS.text,
               }}
-            />
+            >
+              <Text style={{ fontSize: 15, color: COLORS.text, fontWeight: '600' }}>
+                {user?.username ?? '—'}
+              </Text>
+            </View>
           </View>
 
           <AnimatedPressable onPress={handleSave} disabled={saving}>
