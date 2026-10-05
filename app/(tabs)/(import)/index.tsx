@@ -9,7 +9,6 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
@@ -77,6 +76,7 @@ export default function ImportScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Import modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -273,46 +273,40 @@ export default function ImportScreen() {
     }
   }, [selectedFile, importedBy, fetchFiles, showToast]);
 
-  const handleDeleteFile = useCallback(async (fileId: string, fileName: string) => {
+  const handleDeleteFile = useCallback((fileId: string, fileName: string) => {
     console.log('[Import] handleDeleteFile called', { fileId, fileName });
-    Alert.alert(
-      'Elimina lista',
-      `Vuoi eliminare "${fileName}" e tutti i suoi articoli? L'operazione non è reversibile.`,
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Elimina',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('[Import] Delete confirmed for fileId:', fileId);
-            setDeletingId(fileId);
-            try {
-              const { error: itemsError } = await db
-                .from('supplier_items')
-                .delete()
-                .eq('file_id', fileId);
-              if (itemsError) throw itemsError;
+    setDeleteTarget({ id: fileId, name: fileName });
+  }, []);
 
-              const { error: fileError } = await db
-                .from('supplier_files')
-                .delete()
-                .eq('id', fileId);
-              if (fileError) throw fileError;
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const { id: fileId, name: fileName } = deleteTarget;
+    console.log('[Import] confirmDelete called', { fileId, fileName });
+    setDeleteTarget(null);
+    setDeletingId(fileId);
+    try {
+      const { error: itemsError } = await db
+        .from('supplier_items')
+        .delete()
+        .eq('file_id', fileId);
+      if (itemsError) throw itemsError;
 
-              setFiles(prev => prev.filter(f => f.id !== fileId));
-              showToast(`"${fileName}" eliminata`, 'success');
-              console.log('[Import] File deleted successfully:', fileId);
-            } catch (err: any) {
-              console.error('[Import] handleDeleteFile error:', err);
-              showToast(err?.message ?? 'Errore durante l\'eliminazione', 'error');
-            } finally {
-              setDeletingId(null);
-            }
-          },
-        },
-      ]
-    );
-  }, [showToast]);
+      const { error: fileError } = await db
+        .from('supplier_files')
+        .delete()
+        .eq('id', fileId);
+      if (fileError) throw fileError;
+
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+      showToast(`"${fileName}" eliminata`, 'success');
+      console.log('[Import] File deleted successfully:', fileId);
+    } catch (err: any) {
+      console.error('[Import] confirmDelete error:', err);
+      showToast(err?.message ?? 'Errore durante l\'eliminazione', 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deleteTarget, showToast]);
 
   const handleCardPress = useCallback((fileId: string, fileName: string) => {
     console.log('[Import] handleCardPress', { fileId, fileName });
@@ -651,6 +645,68 @@ export default function ImportScreen() {
         visible={toast.visible}
         onHide={hideToast}
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={!!deleteTarget}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setDeleteTarget(null)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 32,
+        }}>
+          <View style={{
+            backgroundColor: COLORS.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '100%',
+            maxWidth: 360,
+            gap: 16,
+          }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.text }}>
+              Elimina lista
+            </Text>
+            <Text style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 }}>
+              Vuoi eliminare "{deleteTarget?.name}" e tutti i suoi articoli? L'operazione non è reversibile.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <AnimatedPressable
+                onPress={() => {
+                  console.log('[Import] Delete modal cancelled');
+                  setDeleteTarget(null);
+                }}
+                style={{ flex: 1 }}
+              >
+                <View style={{
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  backgroundColor: COLORS.surfaceSecondary,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text }}>Annulla</Text>
+                </View>
+              </AnimatedPressable>
+              <AnimatedPressable onPress={confirmDelete} style={{ flex: 1 }}>
+                <View style={{
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  backgroundColor: '#EF4444',
+                }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>Elimina</Text>
+                </View>
+              </AnimatedPressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
