@@ -7,7 +7,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { Wrench, ChevronRight } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { FileStatusBadge } from '@/components/StatusBadge';
@@ -80,9 +80,11 @@ export default function LavorazioneScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchFiles();
+    }, [fetchFiles]),
+  );
 
   const handleRefresh = useCallback(() => {
     console.log('[Lavorazione] handleRefresh called');
