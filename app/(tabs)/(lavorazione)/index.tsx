@@ -185,7 +185,7 @@ export default function LavorazioneScreen() {
                 style={{ fontSize: 12, color: COLORS.textSecondary }}
                 numberOfLines={1}
               >
-                {fileName}
+                {item.original_data?.['ITEMDESC'] ?? '—'}
               </Text>
               <View style={{ marginTop: 6 }}>
                 <ItemStatusBadge status={itemStatus} size="sm" />
