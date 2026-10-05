@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -88,23 +88,9 @@ export default function RicezioneScreen() {
   const [manualCode, setManualCode] = useState('');
   const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<'PkgID' | 'LPN'>('PkgID');
   const errorBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
-
-  // ── Derived: available columns ─────────────────────────────────────────────
-
-  const availableColumns = useMemo(() => {
-    const colSet = new Set<string>();
-    for (const { file } of activeFiles) {
-      if (Array.isArray(file.column_headers)) {
-        for (const col of file.column_headers) {
-          colSet.add(col);
-        }
-      }
-    }
-    return Array.from(colSet).sort((a, b) => a.localeCompare(b));
-  }, [activeFiles]);
 
   // ── Load active files ──────────────────────────────────────────────────────
 
@@ -187,7 +173,7 @@ export default function RicezioneScreen() {
       if (!trimmed) return;
       if (processingCode) return;
       setProcessingCode(true);
-      console.log('[Ricezione] processCode start:', trimmed, '| selectedColumn:', selectedColumn ?? 'all');
+      console.log('[Ricezione] processCode start:', trimmed, '| selectedColumn:', selectedColumn);
 
       try {
         const normalizedCode = trimmed.toLowerCase();
@@ -200,20 +186,13 @@ export default function RicezioneScreen() {
           }
         }
 
-        // Search: respect selectedColumn filter
+        // Search by the selected column only
         const matched = allItems.filter(item => {
-          if (selectedColumn !== null) {
-            // Only match the specific column
-            const val = (item.original_data ?? {})[selectedColumn];
-            return String(val ?? '').trim().toLowerCase() === normalizedCode;
-          }
-          // Search in any field of original_data
-          return Object.values(item.original_data ?? {}).some(
-            val => String(val).trim().toLowerCase() === normalizedCode,
-          );
+          const val = (item.original_data ?? {})[selectedColumn];
+          return String(val ?? '').trim().toLowerCase() === normalizedCode;
         });
 
-        console.log('[Ricezione] processCode matched:', matched.length, 'items for code:', trimmed, '| column:', selectedColumn ?? 'all');
+        console.log('[Ricezione] processCode matched:', matched.length, 'items for code:', trimmed, '| column:', selectedColumn);
 
         const logId = `${Date.now()}-${Math.random()}`;
         const now = new Date().toISOString();
@@ -323,8 +302,8 @@ export default function RicezioneScreen() {
     setManualCode('');
   }, [manualCode, processCode]);
 
-  const handleColumnChipPress = useCallback((col: string | null) => {
-    console.log('[Ricezione] Column chip pressed:', col ?? 'all');
+  const handleColumnToggle = useCallback((col: 'PkgID' | 'LPN') => {
+    console.log('[Ricezione] Column toggle pressed:', col);
     setSelectedColumn(col);
   }, []);
 
@@ -341,9 +320,7 @@ export default function RicezioneScreen() {
   const progressLabel = `${receivedItems} articoli ricevuti su ${totalItems} totali`;
   const hasActiveFiles = activeFiles.length > 0;
 
-  const scanButtonSubtext = selectedColumn !== null
-    ? `Cerca in colonna: ${selectedColumn}`
-    : 'Cerca in tutti i file attivi';
+  const scanButtonSubtext = `Cerca per: ${selectedColumn}`;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -384,40 +361,27 @@ export default function RicezioneScreen() {
 
           {/* Column filter */}
           <View style={styles.columnFilterSection}>
-            <Text style={styles.columnFilterLabel}>Cerca in colonna:</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.columnChipsRow}
-            >
-              {/* "Tutte" chip */}
+            <Text style={styles.columnFilterLabel}>Cerca per:</Text>
+            <View style={styles.columnToggleRow}>
               <TouchableOpacity
-                style={[styles.columnChip, selectedColumn === null && styles.columnChipActive]}
-                onPress={() => handleColumnChipPress(null)}
+                style={[styles.columnToggleBtn, selectedColumn === 'PkgID' && styles.columnToggleBtnActive]}
+                onPress={() => handleColumnToggle('PkgID')}
                 activeOpacity={0.75}
               >
-                <Text style={[styles.columnChipText, selectedColumn === null && styles.columnChipTextActive]}>
-                  Tutte
+                <Text style={[styles.columnToggleText, selectedColumn === 'PkgID' && styles.columnToggleTextActive]}>
+                  PkgID
                 </Text>
               </TouchableOpacity>
-
-              {/* Per-column chips */}
-              {availableColumns.map(col => {
-                const isActive = selectedColumn === col;
-                return (
-                  <TouchableOpacity
-                    key={col}
-                    style={[styles.columnChip, isActive && styles.columnChipActive]}
-                    onPress={() => handleColumnChipPress(col)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.columnChipText, isActive && styles.columnChipTextActive]}>
-                      {col}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+              <TouchableOpacity
+                style={[styles.columnToggleBtn, selectedColumn === 'LPN' && styles.columnToggleBtnActive]}
+                onPress={() => handleColumnToggle('LPN')}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.columnToggleText, selectedColumn === 'LPN' && styles.columnToggleTextActive]}>
+                  LPN
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Scan button */}
@@ -609,29 +573,30 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     letterSpacing: 0.2,
   },
-  columnChipsRow: {
+  columnToggleRow: {
     flexDirection: 'row',
     gap: 8,
-    paddingVertical: 2,
   },
-  columnChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  columnToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  columnChipActive: {
+  columnToggleBtnActive: {
     backgroundColor: '#1A56DB',
     borderColor: '#1A56DB',
   },
-  columnChipText: {
-    fontSize: 13,
+  columnToggleText: {
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
   },
-  columnChipTextActive: {
+  columnToggleTextActive: {
     color: '#FFFFFF',
   },
 
