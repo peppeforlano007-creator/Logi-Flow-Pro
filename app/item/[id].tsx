@@ -9,7 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle, Clock, Camera } from 'lucide-react-native';
+import { CheckCircle, Clock, Camera, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { ScannerModal } from '@/components/ScannerModal';
 import { COLORS } from '@/constants/AppColors';
 import { ItemStatusBadge } from '@/components/StatusBadge';
@@ -113,6 +113,9 @@ export default function ItemDetailScreen() {
 
   // Scanner state
   const [scanTarget, setScanTarget] = useState<'sku' | 'lotto' | null>(null);
+
+  // Dati Fornitore collapsible state
+  const [datiFornitoreOpen, setDatiFornitoreOpen] = useState(false);
 
   // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
   const isMounted = useRef(false);
@@ -550,7 +553,7 @@ export default function ItemDetailScreen() {
           })}
         </View>
 
-        {/* Original data section — whitelist only, read-only */}
+        {/* Original data section — collapsible */}
         {(() => {
           const VISIBLE_COLUMNS = ['EAN', 'ASIN', 'LPN', 'PKGID', 'UNITS', 'GLDESC', 'ITEMDESC', 'UNITCOST', 'AMAZONPRICE', 'REMOVALREASON', 'CATEGORYDESC', 'RECOVERYRETE'];
           const visibleEntries = Object.entries(originalData).filter(
@@ -564,37 +567,65 @@ export default function ItemDetailScreen() {
               style={{
                 backgroundColor: COLORS.surface,
                 borderRadius: 14,
-                padding: 16,
                 borderWidth: 1,
                 borderColor: COLORS.border,
-                gap: 14,
+                overflow: 'hidden',
               }}
             >
-              <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
-                Dati Fornitore
-              </Text>
-              {visibleEntries.map(([key, value]) => (
-                <View key={key} style={{ gap: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    {key}
+              {/* Header — tappable to toggle */}
+              <AnimatedPressable onPress={() => {
+                console.log('[DatiFornitore] toggle pressed, opening:', !datiFornitoreOpen);
+                setDatiFornitoreOpen(prev => !prev);
+              }}>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
+                    Dati Fornitore
                   </Text>
-                  <View
-                    style={{
-                      backgroundColor: COLORS.surfaceSecondary,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: COLORS.border,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      minHeight: 40,
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, color: value ? COLORS.text : COLORS.textTertiary }}>
-                      {value || '—'}
-                    </Text>
-                  </View>
+                  {datiFornitoreOpen
+                    ? <ChevronUp size={18} color={COLORS.textSecondary} />
+                    : <ChevronDown size={18} color={COLORS.textSecondary} />}
                 </View>
-              ))}
+              </AnimatedPressable>
+
+              {/* Collapsible content */}
+              {datiFornitoreOpen && (
+                <View style={{
+                  paddingHorizontal: 16,
+                  paddingBottom: 16,
+                  gap: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: COLORS.border,
+                }}>
+                  {visibleEntries.map(([key, value]) => (
+                    <View key={key} style={{ gap: 4, marginTop: 14 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {key}
+                      </Text>
+                      <View
+                        style={{
+                          backgroundColor: COLORS.surfaceSecondary,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: COLORS.border,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          minHeight: 40,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, color: value ? COLORS.text : COLORS.textTertiary }}>
+                          {value || '—'}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           );
         })()}
