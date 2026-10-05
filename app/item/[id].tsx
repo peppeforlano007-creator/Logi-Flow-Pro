@@ -86,6 +86,10 @@ export default function ItemDetailScreen() {
   const [skuVendita, setSkuVendita] = useState('');
   const [lottoVendita, setLottoVendita] = useState('');
 
+  // EAN Corretto and ASIN Corretto state
+  const [eanCorretto, setEanCorretto] = useState('');
+  const [asinCorretto, setAsinCorretto] = useState('');
+
   // Scanner state
   const [scanTarget, setScanTarget] = useState<'sku' | 'lotto' | null>(null);
 
@@ -146,6 +150,13 @@ export default function ItemDetailScreen() {
       setLottoVendita(fetchedItem.extra_data?.['Lotto'] ?? '');
       console.log('[ItemDetail] restoring SKU:', fetchedItem.extra_data?.['SKU'], 'Lotto:', fetchedItem.extra_data?.['Lotto']);
 
+      // EAN Corretto: restore from extraData if saved, otherwise pull from originalData
+      const savedEan = (fetchedItem.extra_data?.['EANCorretto'] ?? '');
+      setEanCorretto(savedEan !== '' ? savedEan : (fetchedItem.original_data?.['EAN'] ?? ''));
+
+      const savedAsin = (fetchedItem.extra_data?.['ASINCorretto'] ?? '');
+      setAsinCorretto(savedAsin !== '' ? savedAsin : (fetchedItem.original_data?.['ASIN'] ?? ''));
+
       // Fetch file for extra_columns
       const { data: fileData, error: fileError } = await db
         .from('supplier_files')
@@ -166,6 +177,12 @@ export default function ItemDetailScreen() {
         setSkuVendita(currentExtra['SKU'] ?? '');
         setLottoVendita(currentExtra['Lotto'] ?? '');
         setPrezzoVendita(currentExtra['PrezzoVendita'] ?? '');
+
+        const savedEan2 = currentExtra['EANCorretto'] ?? '';
+        setEanCorretto(savedEan2 !== '' ? savedEan2 : (fetchedItem.original_data?.['EAN'] ?? ''));
+
+        const savedAsin2 = currentExtra['ASINCorretto'] ?? '';
+        setAsinCorretto(savedAsin2 !== '' ? savedAsin2 : (fetchedItem.original_data?.['ASIN'] ?? ''));
       }
     } catch (err) {
       console.error('[ItemDetail] fetchData exception:', err);
@@ -245,8 +262,10 @@ export default function ItemDetailScreen() {
         PrezzoVendita: prezzoVendita,
         SKU: skuVendita,
         Lotto: lottoVendita,
+        EANCorretto: eanCorretto,
+        ASINCorretto: asinCorretto,
       };
-      console.log('[ItemDetail] saving extraData:', { Selezione: updatedExtraData.Selezione, PrezzoVendita: updatedExtraData.PrezzoVendita, SKU: updatedExtraData.SKU, Lotto: updatedExtraData.Lotto });
+      console.log('[ItemDetail] saving extraData:', { Selezione: updatedExtraData.Selezione, PrezzoVendita: updatedExtraData.PrezzoVendita, SKU: updatedExtraData.SKU, Lotto: updatedExtraData.Lotto, EANCorretto: updatedExtraData.EANCorretto, ASINCorretto: updatedExtraData.ASINCorretto });
 
       const { error } = await db
         .from('supplier_items')
@@ -276,7 +295,7 @@ export default function ItemDetailScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, showToast, router]);
+  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, skuVendita, lottoVendita, eanCorretto, asinCorretto, showToast, router]);
 
   if (loading) {
     return (
@@ -587,6 +606,58 @@ export default function ItemDetailScreen() {
               placeholder="0,00"
               placeholderTextColor={COLORS.textTertiary}
               keyboardType="decimal-pad"
+              style={{
+                backgroundColor: COLORS.surfaceSecondary,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            />
+          </View>
+
+          {/* EAN Corretto */}
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              EAN Corretto
+            </Text>
+            <TextInput
+              value={eanCorretto}
+              onChangeText={(v) => {
+                console.log('[ItemDetail] eanCorretto changed:', v);
+                setEanCorretto(v);
+              }}
+              placeholder="EAN corretto"
+              placeholderTextColor={COLORS.textTertiary}
+              style={{
+                backgroundColor: COLORS.surfaceSecondary,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            />
+          </View>
+
+          {/* ASIN Corretto */}
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              ASIN Corretto
+            </Text>
+            <TextInput
+              value={asinCorretto}
+              onChangeText={(v) => {
+                console.log('[ItemDetail] asinCorretto changed:', v);
+                setAsinCorretto(v);
+              }}
+              placeholder="ASIN corretto"
+              placeholderTextColor={COLORS.textTertiary}
               style={{
                 backgroundColor: COLORS.surfaceSecondary,
                 borderRadius: 10,
