@@ -46,6 +46,11 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function getOriginalField(data: Record<string, string>, fieldName: string): string {
+  const key = Object.keys(data).find(k => k.toLowerCase() === fieldName.toLowerCase());
+  return key ? (data[key] ?? '') : '';
+}
+
 function parseUnitCost(data: Record<string, string>): number | null {
   const key = Object.keys(data).find(k => k.toLowerCase() === 'unitcost');
   if (!key) return null;
@@ -152,10 +157,10 @@ export default function ItemDetailScreen() {
 
       // EAN Corretto: restore from extraData if saved, otherwise pull from originalData
       const savedEan = (fetchedItem.extra_data?.['EANCorretto'] ?? '');
-      setEanCorretto(savedEan !== '' ? savedEan : (fetchedItem.original_data?.['EAN'] ?? ''));
+      setEanCorretto(savedEan !== '' ? savedEan : getOriginalField(fetchedItem.original_data ?? {}, 'EAN'));
 
       const savedAsin = (fetchedItem.extra_data?.['ASINCorretto'] ?? '');
-      setAsinCorretto(savedAsin !== '' ? savedAsin : (fetchedItem.original_data?.['ASIN'] ?? ''));
+      setAsinCorretto(savedAsin !== '' ? savedAsin : getOriginalField(fetchedItem.original_data ?? {}, 'ASIN'));
 
       // Fetch file for extra_columns
       const { data: fileData, error: fileError } = await db
@@ -179,10 +184,10 @@ export default function ItemDetailScreen() {
         setPrezzoVendita(currentExtra['PrezzoVendita'] ?? '');
 
         const savedEan2 = currentExtra['EANCorretto'] ?? '';
-        setEanCorretto(savedEan2 !== '' ? savedEan2 : (fetchedItem.original_data?.['EAN'] ?? ''));
+        setEanCorretto(savedEan2 !== '' ? savedEan2 : getOriginalField(fetchedItem.original_data ?? {}, 'EAN'));
 
         const savedAsin2 = currentExtra['ASINCorretto'] ?? '';
-        setAsinCorretto(savedAsin2 !== '' ? savedAsin2 : (fetchedItem.original_data?.['ASIN'] ?? ''));
+        setAsinCorretto(savedAsin2 !== '' ? savedAsin2 : getOriginalField(fetchedItem.original_data ?? {}, 'ASIN'));
       }
     } catch (err) {
       console.error('[ItemDetail] fetchData exception:', err);
