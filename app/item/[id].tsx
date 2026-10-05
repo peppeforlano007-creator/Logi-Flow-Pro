@@ -340,49 +340,54 @@ export default function ItemDetailScreen() {
           })}
         </View>
 
-        {/* Original data section — skip AdjReason key */}
-        <View
-          style={{
-            backgroundColor: COLORS.surface,
-            borderRadius: 14,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: COLORS.border,
-            gap: 14,
-          }}
-        >
-          <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
-            Dati Fornitore
-          </Text>
-          {Object.entries(originalData)
-            .filter(([key]) => key !== 'AdjReason')
-            .map(([key, value]) => (
-              <View key={key} style={{ gap: 5 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {key}
-                </Text>
-                <TextInput
-                  value={String(value ?? '')}
-                  onChangeText={(v) => {
-                    console.log('[ItemDetail] originalData field changed:', key, v);
-                    setOriginalData(prev => ({ ...prev, [key]: v }));
-                  }}
-                  placeholder={`Valore per ${key}`}
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={{
-                    backgroundColor: COLORS.surfaceSecondary,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    fontSize: 14,
-                    color: COLORS.text,
-                  }}
-                />
-              </View>
-            ))}
-        </View>
+        {/* Original data section — whitelist only, read-only */}
+        {(() => {
+          const VISIBLE_COLUMNS = ['EAN', 'ASIN', 'LPN', 'PKGID', 'UNITS', 'GLDESC', 'ITEMDESC', 'UNITCOST', 'AMAZONPRICE', 'REMOVALREASON', 'CATEGORYDESC', 'RECOVERYRETE'];
+          const visibleEntries = Object.entries(originalData).filter(
+            ([key]) =>
+              key !== 'AdjReason' &&
+              VISIBLE_COLUMNS.some(v => v.toLowerCase() === key.toLowerCase())
+          );
+          if (visibleEntries.length === 0) return null;
+          return (
+            <View
+              style={{
+                backgroundColor: COLORS.surface,
+                borderRadius: 14,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                gap: 14,
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
+                Dati Fornitore
+              </Text>
+              {visibleEntries.map(([key, value]) => (
+                <View key={key} style={{ gap: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {key}
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: COLORS.surfaceSecondary,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: COLORS.border,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      minHeight: 40,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, color: value ? COLORS.text : COLORS.textTertiary }}>
+                      {value || '—'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
 
         {/* Extra data section */}
         {extraColumns.length > 0 && (
