@@ -4,14 +4,11 @@ import {
   Text,
   FlatList,
   Animated,
-  ActivityIndicator,
-  Modal,
-  TextInput,
   ScrollView,
   RefreshControl,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Plus, X, Check, Search } from 'lucide-react-native';
+import { Search } from 'lucide-react-native';
 import { COLORS } from '@/constants/AppColors';
 import { FileStatusBadge, ItemStatusBadge } from '@/components/StatusBadge';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -49,11 +46,6 @@ export default function FileDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Add column modal
-  const [columnModalVisible, setColumnModalVisible] = useState(false);
-  const [newColumnName, setNewColumnName] = useState('');
-  const [addingColumn, setAddingColumn] = useState(false);
 
   const fetchData = useCallback(async () => {
     console.log('[FileDetail] fetchData called', { id });
@@ -129,43 +121,6 @@ export default function FileDetailScreen() {
     console.log('[FileDetail] handleItemPress', { itemId, itemCode });
     router.push(`/item/${itemId}` as any);
   }, [router]);
-
-  const handleAddColumn = useCallback(async () => {
-    if (!newColumnName.trim()) {
-      showToast('Inserisci un nome per la colonna', 'error');
-      return;
-    }
-    console.log('[FileDetail] handleAddColumn called', { newColumnName, fileId: id });
-    setAddingColumn(true);
-    try {
-      const currentExtra = file?.extra_columns ?? [];
-      if (currentExtra.includes(newColumnName.trim())) {
-        showToast('Questa colonna esiste già', 'error');
-        return;
-      }
-      const updatedColumns = [...currentExtra, newColumnName.trim()];
-      const { error } = await db
-        .from('supplier_files')
-        .update({ extra_columns: updatedColumns })
-        .eq('id', id);
-
-      if (error) {
-        console.error('[FileDetail] addColumn error:', error);
-        throw error;
-      }
-
-      console.log('[FileDetail] Column added:', newColumnName.trim());
-      setFile(prev => prev ? { ...prev, extra_columns: updatedColumns } : prev);
-      setColumnModalVisible(false);
-      setNewColumnName('');
-      showToast(`Colonna "${newColumnName.trim()}" aggiunta`, 'success');
-    } catch (err: any) {
-      console.error('[FileDetail] handleAddColumn error:', err);
-      showToast(err?.message ?? 'Errore', 'error');
-    } finally {
-      setAddingColumn(false);
-    }
-  }, [newColumnName, file, id, showToast]);
 
   const completedCount = items.filter(i => i.status === 'completed').length;
   const progress = items.length > 0 ? completedCount / items.length : 0;
@@ -258,31 +213,6 @@ export default function FileDetailScreen() {
               setSearchQuery('');
             },
           },
-          headerRight: () => (
-            <AnimatedPressable
-              onPress={() => {
-                console.log('[FileDetail] Add column button pressed');
-                setColumnModalVisible(true);
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: COLORS.primaryMuted,
-                  borderRadius: 16,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                <Plus size={14} color={COLORS.primary} />
-                <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: '600' }}>
-                  Colonna
-                </Text>
-              </View>
-            </AnimatedPressable>
-          ),
         }}
       />
 
@@ -382,110 +312,6 @@ export default function FileDetailScreen() {
           </View>
         }
       />
-
-      {/* Add Column Modal */}
-      <Modal
-        visible={columnModalVisible}
-        animationType="slide"
-        presentationStyle="formSheet"
-        onRequestClose={() => {
-          console.log('[FileDetail] Column modal closed');
-          setColumnModalVisible(false);
-        }}
-      >
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 20,
-              paddingTop: 24,
-              borderBottomWidth: 1,
-              borderBottomColor: COLORS.border,
-              backgroundColor: COLORS.surface,
-            }}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text }}>
-              Aggiungi Colonna
-            </Text>
-            <AnimatedPressable
-              onPress={() => {
-                console.log('[FileDetail] Column modal dismiss pressed');
-                setColumnModalVisible(false);
-              }}
-            >
-              <View
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: COLORS.surfaceSecondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={16} color={COLORS.textSecondary} />
-              </View>
-            </AnimatedPressable>
-          </View>
-
-          <View style={{ padding: 20, gap: 16 }}>
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text }}>
-                Nome colonna
-              </Text>
-              <TextInput
-                value={newColumnName}
-                onChangeText={(v) => {
-                  console.log('[FileDetail] newColumnName changed:', v);
-                  setNewColumnName(v);
-                }}
-                placeholder="es. Prezzo, Quantità, Note..."
-                placeholderTextColor={COLORS.textTertiary}
-                autoFocus
-                style={{
-                  backgroundColor: COLORS.surface,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: COLORS.border,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  fontSize: 15,
-                  color: COLORS.text,
-                }}
-              />
-            </View>
-
-            <Text style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 }}>
-              La colonna verrà aggiunta a tutti gli articoli di questo file e sarà modificabile nella schermata di lavorazione.
-            </Text>
-
-            <AnimatedPressable onPress={handleAddColumn} disabled={addingColumn}>
-              <View
-                style={{
-                  backgroundColor: COLORS.primary,
-                  borderRadius: 12,
-                  paddingVertical: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 8,
-                }}
-              >
-                {addingColumn ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Check size={18} color="#FFFFFF" />
-                )}
-                <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
-                  {addingColumn ? 'Aggiunta...' : 'Aggiungi Colonna'}
-                </Text>
-              </View>
-            </AnimatedPressable>
-          </View>
-        </View>
-      </Modal>
 
       <ToastMessage
         message={toast.message}
