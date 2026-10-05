@@ -119,17 +119,30 @@ export default function RicezioneScreen() {
       }
 
       const fileIds = activeFileList.map(f => f.id);
-      const { data: items, error: itemsError } = await db
-        .from('supplier_items')
-        .select('id, file_id, item_code, original_data, extra_data, status')
-        .in('file_id', fileIds);
+      const PAGE_SIZE = 1000;
+      let allItems: SupplierItem[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      if (itemsError) {
-        console.error('[Ricezione] loadActiveFiles items error:', itemsError);
-        throw itemsError;
+      while (hasMore) {
+        const { data: page, error: itemsError } = await db
+          .from('supplier_items')
+          .select('id, file_id, item_code, original_data, extra_data, status')
+          .in('file_id', fileIds)
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (itemsError) {
+          console.error('[Ricezione] loadActiveFiles items error:', itemsError);
+          throw itemsError;
+        }
+
+        const pageData = (page ?? []) as SupplierItem[];
+        allItems = [...allItems, ...pageData];
+        hasMore = pageData.length === PAGE_SIZE;
+        from += PAGE_SIZE;
+        console.log('[Ricezione] Items page fetched:', pageData.length, '| total so far:', allItems.length);
       }
 
-      const allItems = (items ?? []) as SupplierItem[];
       console.log('[Ricezione] Total items loaded:', allItems.length);
 
       const result: ActiveFileData[] = activeFileList.map(file => ({
