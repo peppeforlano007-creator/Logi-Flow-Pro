@@ -28,7 +28,11 @@ const CONDITIONS = [
 
 const FIXED_VALUES = CONDITIONS.slice(0, 5).map(c => c.value);
 
-const SELEZIONE_OPTIONS: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
+const SELEZIONE_OPTIONS = [
+  { value: 'A' as const, label: 'A', description: 'Prezzo intero (UNITCOST)' },
+  { value: 'B' as const, label: 'B', description: 'UNITCOST −30%' },
+  { value: 'C' as const, label: 'C', description: 'UNITCOST −50%' },
+];
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -433,14 +437,14 @@ export default function ItemDetailScreen() {
             </Text>
           </View>
 
-          {SELEZIONE_OPTIONS.map((option, index) => {
-            const isSelected = selezione === option;
+          {SELEZIONE_OPTIONS.map((opt, index) => {
+            const isSelected = selezione === opt.value;
             const isLast = index === SELEZIONE_OPTIONS.length - 1;
 
             return (
               <AnimatedPressable
-                key={option}
-                onPress={() => handleSelezionePress(option)}
+                key={opt.value}
+                onPress={() => handleSelezionePress(opt.value)}
               >
                 <View
                   style={{
@@ -478,9 +482,10 @@ export default function ItemDetailScreen() {
                     )}
                   </View>
 
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.text }}>
-                    {option}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.text }}>{opt.label}</Text>
+                    <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>{opt.description}</Text>
+                  </View>
                 </View>
               </AnimatedPressable>
             );
