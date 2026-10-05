@@ -51,6 +51,22 @@ function getOriginalField(data: Record<string, string>, fieldName: string): stri
   return key ? (data[key] ?? '') : '';
 }
 
+function normalizeEAN(raw: string): string {
+  if (!raw || raw.trim() === '') return '';
+  const trimmed = raw.trim();
+  // Detect scientific notation: contains E+ or E- (case insensitive), optionally with comma as decimal
+  if (/[eE][+\-]/.test(trimmed)) {
+    // Replace comma decimal separator with dot before parsing
+    const normalized = trimmed.replace(',', '.');
+    const num = parseFloat(normalized);
+    if (!isNaN(num)) {
+      // Convert to integer string (EANs are always integers)
+      return Math.round(num).toString();
+    }
+  }
+  return trimmed;
+}
+
 function parseUnitCost(data: Record<string, string>): number | null {
   const key = Object.keys(data).find(k => k.toLowerCase() === 'unitcost');
   if (!key) return null;
@@ -157,7 +173,7 @@ export default function ItemDetailScreen() {
 
       // EAN Corretto: restore from extraData if saved, otherwise pull from originalData
       const savedEan = (fetchedItem.extra_data?.['EANCorretto'] ?? '');
-      setEanCorretto(savedEan !== '' ? savedEan : getOriginalField(fetchedItem.original_data ?? {}, 'EAN'));
+      setEanCorretto(savedEan !== '' ? savedEan : normalizeEAN(getOriginalField(fetchedItem.original_data ?? {}, 'EAN')));
 
       const savedAsin = (fetchedItem.extra_data?.['ASINCorretto'] ?? '');
       setAsinCorretto(savedAsin !== '' ? savedAsin : getOriginalField(fetchedItem.original_data ?? {}, 'ASIN'));
@@ -184,7 +200,7 @@ export default function ItemDetailScreen() {
         setPrezzoVendita(currentExtra['PrezzoVendita'] ?? '');
 
         const savedEan2 = currentExtra['EANCorretto'] ?? '';
-        setEanCorretto(savedEan2 !== '' ? savedEan2 : getOriginalField(fetchedItem.original_data ?? {}, 'EAN'));
+        setEanCorretto(savedEan2 !== '' ? savedEan2 : normalizeEAN(getOriginalField(fetchedItem.original_data ?? {}, 'EAN')));
 
         const savedAsin2 = currentExtra['ASINCorretto'] ?? '';
         setAsinCorretto(savedAsin2 !== '' ? savedAsin2 : getOriginalField(fetchedItem.original_data ?? {}, 'ASIN'));
