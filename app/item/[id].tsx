@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,8 @@ const CONDITIONS = [
 
 const FIXED_VALUES = CONDITIONS.slice(0, 5).map(c => c.value);
 
+const SELEZIONE_OPTIONS: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
+
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString('it-IT', {
@@ -37,6 +39,18 @@ function formatDate(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function parseUnitCost(data: Record<string, string>): number | null {
+  const key = Object.keys(data).find(k => k.toLowerCase() === 'unitcost');
+  if (!key) return null;
+  const raw = String(data[key] ?? '').replace(',', '.');
+  const n = parseFloat(raw);
+  return isNaN(n) ? null : n;
+}
+
+function formatPrice(n: number): string {
+  return n.toFixed(2).replace('.', ',');
 }
 
 export default function ItemDetailScreen() {
@@ -56,6 +70,15 @@ export default function ItemDetailScreen() {
   // AdjReason condition picker state
   const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
   const [altroText, setAltroText] = useState('');
+
+  // Selezione state
+  const [selezione, setSelezione] = useState<'A' | 'B' | 'C' | null>(null);
+
+  // Prezzo di Vendita state
+  const [prezzoVendita, setPrezzoVendita] = useState('');
+
+  // Track whether we've mounted so the selezione effect doesn't overwrite a restored price
+  const isMounted = useRef(false);
 
   const fetchData = useCallback(async () => {
     console.log('[ItemDetail] fetchData called', { id });
@@ -92,6 +115,20 @@ export default function ItemDetailScreen() {
         setAltroText(adjValue);
       }
 
+      // Restore Selezione from extraData
+      const savedSelezione = fetchedItem.extra_data?.['Selezione'];
+      if (savedSelezione === 'A' || savedSelezione === 'B' || savedSelezione === 'C') {
+        console.log('[ItemDetail] restoring selezione from extraData:', savedSelezione);
+        setSelezione(savedSelezione);
+      }
+
+      // Restore PrezzoVendita from extraData (takes priority over computed value)
+      const savedPrezzo = fetchedItem.extra_data?.['PrezzoVendita'];
+      if (savedPrezzo !== undefined && savedPrezzo !== '') {
+        console.log('[ItemDetail] restoring prezzoVendita from extraData:', savedPrezzo);
+        setPrezzoVendita(savedPrezzo);
+      }
+
       // Fetch file for extra_columns
       const { data: fileData, error: fileError } = await db
         .from('supplier_files')
@@ -114,12 +151,34 @@ export default function ItemDetailScreen() {
       console.error('[ItemDetail] fetchData exception:', err);
     } finally {
       setLoading(false);
+      // Mark as mounted after data is loaded so the selezione effect can run
+      isMounted.current = true;
     }
   }, [id]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Recompute prezzoVendita when selezione changes, but only after mount
+  useEffect(() => {
+    if (!isMounted.current) return;
+
+    console.log('[ItemDetail] selezione changed, recomputing prezzoVendita:', selezione);
+    const unitCost = parseUnitCost(originalData);
+
+    if (selezione === null) {
+      setPrezzoVendita('');
+    } else if (unitCost === null) {
+      setPrezzoVendita('');
+    } else if (selezione === 'A') {
+      setPrezzoVendita(formatPrice(unitCost));
+    } else if (selezione === 'B') {
+      setPrezzoVendita(formatPrice(unitCost * 0.70));
+    } else if (selezione === 'C') {
+      setPrezzoVendita(formatPrice(unitCost * 0.50));
+    }
+  }, [selezione]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConditionPress = useCallback((value: string) => {
     if (selectedCondition === value) {
@@ -133,8 +192,18 @@ export default function ItemDetailScreen() {
     }
   }, [selectedCondition]);
 
+  const handleSelezionePress = useCallback((value: 'A' | 'B' | 'C') => {
+    if (selezione === value) {
+      console.log('[ItemDetail] selezione deselected:', value);
+      setSelezione(null);
+    } else {
+      console.log('[ItemDetail] selezione selected:', value);
+      setSelezione(value);
+    }
+  }, [selezione]);
+
   const handleSave = useCallback(async () => {
-    console.log('[ItemDetail] handleSave called', { id, processedBy, selectedCondition, altroText });
+    console.log('[ItemDetail] handleSave called', { id, processedBy, selectedCondition, altroText, selezione, prezzoVendita });
     setSaving(true);
     try {
       // Compute final AdjReason value
@@ -150,11 +219,18 @@ export default function ItemDetailScreen() {
       const updatedOriginalData = { ...originalData, AdjReason: adjReason };
       console.log('[ItemDetail] saving AdjReason:', adjReason);
 
+      const updatedExtraData = {
+        ...extraData,
+        Selezione: selezione ?? '',
+        PrezzoVendita: prezzoVendita,
+      };
+      console.log('[ItemDetail] saving extraData with Selezione and PrezzoVendita:', { Selezione: updatedExtraData.Selezione, PrezzoVendita: updatedExtraData.PrezzoVendita });
+
       const { error } = await db
         .from('supplier_items')
         .update({
           original_data: updatedOriginalData,
-          extra_data: extraData,
+          extra_data: updatedExtraData,
           status: 'completed',
           processed_at: new Date().toISOString(),
           processed_by: processedBy || null,
@@ -167,6 +243,7 @@ export default function ItemDetailScreen() {
       }
 
       setOriginalData(updatedOriginalData);
+      setExtraData(updatedExtraData);
       console.log('[ItemDetail] item saved successfully');
       showToast('Articolo salvato con successo', 'success');
       setTimeout(() => router.back(), 1200);
@@ -177,7 +254,7 @@ export default function ItemDetailScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, showToast, router]);
+  }, [id, originalData, extraData, processedBy, selectedCondition, altroText, selezione, prezzoVendita, showToast, router]);
 
   if (loading) {
     return (
@@ -340,6 +417,76 @@ export default function ItemDetailScreen() {
           })}
         </View>
 
+        {/* Selezione card */}
+        <View
+          style={{
+            backgroundColor: COLORS.surface,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
+              Selezione
+            </Text>
+          </View>
+
+          {SELEZIONE_OPTIONS.map((option, index) => {
+            const isSelected = selezione === option;
+            const isLast = index === SELEZIONE_OPTIONS.length - 1;
+
+            return (
+              <AnimatedPressable
+                key={option}
+                onPress={() => handleSelezionePress(option)}
+              >
+                <View
+                  style={{
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    borderBottomWidth: isLast ? 0 : 1,
+                    borderBottomColor: COLORS.border,
+                  }}
+                >
+                  {/* Radio circle */}
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: 2,
+                      backgroundColor: isSelected ? COLORS.primary : 'transparent',
+                      borderColor: isSelected ? COLORS.primary : COLORS.border,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {isSelected && (
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: '#FFFFFF',
+                        }}
+                      />
+                    )}
+                  </View>
+
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.text }}>
+                    {option}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+            );
+          })}
+        </View>
+
         {/* Original data section — whitelist only, read-only */}
         {(() => {
           const VISIBLE_COLUMNS = ['EAN', 'ASIN', 'LPN', 'PKGID', 'UNITS', 'GLDESC', 'ITEMDESC', 'UNITCOST', 'AMAZONPRICE', 'REMOVALREASON', 'CATEGORYDESC', 'RECOVERYRETE'];
@@ -388,6 +535,48 @@ export default function ItemDetailScreen() {
             </View>
           );
         })()}
+
+        {/* Dati di Vendita card */}
+        <View
+          style={{
+            backgroundColor: COLORS.surface,
+            borderRadius: 14,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            gap: 14,
+          }}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>
+            Dati di Vendita
+          </Text>
+
+          <View style={{ gap: 5 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Prezzo di Vendita
+            </Text>
+            <TextInput
+              value={prezzoVendita}
+              onChangeText={(v) => {
+                console.log('[ItemDetail] prezzoVendita changed:', v);
+                setPrezzoVendita(v);
+              }}
+              placeholder="0,00"
+              placeholderTextColor={COLORS.textTertiary}
+              keyboardType="decimal-pad"
+              style={{
+                backgroundColor: COLORS.surfaceSecondary,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            />
+          </View>
+        </View>
 
         {/* Extra data section */}
         {extraColumns.length > 0 && (
