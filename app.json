@@ -15,7 +15,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.placeholder.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Questa app usa la fotocamera per scansionare i codici a barre degli articoli."
       }
     },
     "android": {
@@ -23,7 +24,10 @@
         "foregroundImage": "./assets/images/app-icon-nst.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.placeholder.app"
+      "package": "com.placeholder.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/images/newly.png",
@@ -33,14 +37,17 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-camera"
     ],
     "scheme": "logiflowpro",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "supabaseUrl": "https://qblqwlponnpqragrkncl.supabase.co",
+      "supabaseAnonToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFibHF3bHBvbm5wcXJhZ3JrbmNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNDY1NDEsImV4cCI6MjEwNjYyMjU0MX0.s6mofR39cPu9bFI1p-xfHNf4f176n-0L6Y8g86DvP0s"
     }
   }
 }

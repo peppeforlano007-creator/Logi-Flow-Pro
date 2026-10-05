@@ -20,10 +20,8 @@ import { SkeletonList } from '@/components/SkeletonLoader';
 import { ToastMessage, useToast } from '@/components/ToastMessage';
 import { db } from '@/utils/db';
 import { readFileAsBase64 } from '@/utils/fileHelpers';
+import { SUPABASE_PROJECT_URL as SUPABASE_URL, SUPABASE_ANON_TOKEN as SUPABASE_ANON_KEY } from '@/constants/supabase';
 import type { SupplierFile } from '@/types';
-
-const SUPABASE_URL = 'https://qblqwlponnpqragrkncl.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFibHF3bHBvbm5wcXJhZ3JrbmNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNDY1NDEsImV4cCI6MjEwNjYyMjU0MX0.s6mofR39cPu9bFI1p-xfHNf4f176n-0L6Y8g86DvP0s';
 
 function AnimatedListItem({ index, children }: { index: number; children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
