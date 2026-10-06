@@ -59,6 +59,8 @@ export default function LavorazioneScreen() {
   const [selectedColumn, setSelectedColumn] = useState<ToggleColumn>('PkgID');
   const [searchQuery, setSearchQuery] = useState('');
   const [scannerVisible, setScannerVisible] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Data fetching ────────────────────────────────────────────────────────
 
@@ -97,6 +99,13 @@ export default function LavorazioneScreen() {
     }, [fetchItems]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => searchInputRef.current?.focus(), 300);
+      return () => clearTimeout(timer);
+    }, []),
+  );
+
   const handleRefresh = useCallback(() => {
     console.log('[Lavorazione] handleRefresh triggered');
     setRefreshing(true);
@@ -126,7 +135,22 @@ export default function LavorazioneScreen() {
   const handleSearchChange = useCallback((text: string) => {
     console.log('[Lavorazione] search query changed:', text);
     setSearchQuery(text);
-  }, []);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (text.trim()) {
+      debounceTimerRef.current = setTimeout(() => {
+        const match = items.find(item => {
+          const value = String(item.original_data?.[selectedColumn] ?? '');
+          return value.toLowerCase() === text.trim().toLowerCase();
+        });
+        if (match) {
+          console.log('[Lavorazione] BT debounce exact match, navigating:', match.id);
+          router.push(`/item/${match.id}` as any);
+          setSearchQuery('');
+          setTimeout(() => searchInputRef.current?.focus(), 300);
+        }
+      }, 400);
+    }
+  }, [items, selectedColumn, router]);
 
   const handleItemPress = useCallback((item: ItemWithFile) => {
     const identifier = item.original_data?.['PkgID'] ?? item.original_data?.['LPN'] ?? item.item_code;
@@ -306,6 +330,7 @@ export default function LavorazioneScreen() {
           }}
         >
           <TextInput
+            ref={searchInputRef}
             value={searchQuery}
             onChangeText={handleSearchChange}
             placeholder="Inserisci codice..."
@@ -314,6 +339,7 @@ export default function LavorazioneScreen() {
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
+            autoFocus
           />
         </View>
         <AnimatedPressable onPress={() => { console.log('[Lavorazione] scanner button pressed'); setScannerVisible(true); }}>

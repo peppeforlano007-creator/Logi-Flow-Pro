@@ -92,6 +92,7 @@ export default function RicezioneScreen() {
   const errorBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
+  const inputRef = useRef<TextInput>(null);
 
   // ── Load active files ──────────────────────────────────────────────────────
 
@@ -343,6 +344,7 @@ export default function RicezioneScreen() {
           console.log('[Ricezione] BT debounce fired, processing code:', finalCode);
           processCode(finalCode);
           setManualCode('');
+          setTimeout(() => inputRef.current?.focus(), 50);
         }
       }, 400);
     }
@@ -358,6 +360,7 @@ export default function RicezioneScreen() {
     }
     processCode(manualCode.trim());
     setManualCode('');
+    setTimeout(() => inputRef.current?.focus(), 50);
   }, [manualCode, processCode]);
 
   const handleColumnToggle = useCallback((col: 'PkgID' | 'LPN') => {
@@ -473,6 +476,7 @@ export default function RicezioneScreen() {
           {/* Manual input */}
           <View style={styles.manualRow}>
             <TextInput
+              ref={inputRef}
               style={styles.manualInput}
               placeholder="Inserisci codice manualmente..."
               placeholderTextColor={COLORS.textTertiary}
@@ -482,6 +486,7 @@ export default function RicezioneScreen() {
               returnKeyType="search"
               autoCapitalize="none"
               autoCorrect={false}
+              autoFocus
             />
             <TouchableOpacity
               style={[styles.manualSearchBtn, !manualCode.trim() && { opacity: 0.4 }]}
