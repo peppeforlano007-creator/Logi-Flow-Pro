@@ -90,6 +90,7 @@ export default function RicezioneScreen() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [selectedColumn, setSelectedColumn] = useState<'PkgID' | 'LPN'>('PkgID');
   const errorBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
 
   // ── Load active files ──────────────────────────────────────────────────────
@@ -329,9 +330,32 @@ export default function RicezioneScreen() {
     [processCode],
   );
 
+  const handleManualCodeChange = useCallback((text: string) => {
+    setManualCode(text);
+    // Clear any pending debounce timer
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    // Only auto-process if text is non-empty (BT reader flow)
+    if (text.trim().length > 0) {
+      debounceTimerRef.current = setTimeout(() => {
+        // At this point the BT reader has finished sending all chars
+        const finalCode = text.trim();
+        if (finalCode) {
+          console.log('[Ricezione] BT debounce fired, processing code:', finalCode);
+          processCode(finalCode);
+          setManualCode('');
+        }
+      }, 400);
+    }
+  }, [processCode]);
+
   const handleManualSearch = useCallback(() => {
     console.log('[Ricezione] handleManualSearch pressed, code:', manualCode);
     if (!manualCode.trim()) return;
+    // Cancel any pending debounce to avoid double-processing
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     processCode(manualCode.trim());
     setManualCode('');
   }, [manualCode, processCode]);
@@ -453,7 +477,7 @@ export default function RicezioneScreen() {
               placeholder="Inserisci codice manualmente..."
               placeholderTextColor={COLORS.textTertiary}
               value={manualCode}
-              onChangeText={setManualCode}
+              onChangeText={handleManualCodeChange}
               onSubmitEditing={handleManualSearch}
               returnKeyType="search"
               autoCapitalize="none"
