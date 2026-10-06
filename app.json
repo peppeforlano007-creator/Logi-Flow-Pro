@@ -31,7 +31,9 @@
     },
     "web": {
       "favicon": "./assets/images/newly.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "static",
+      "baseUrl": "/Logi-Flow-Pro"
     },
     "plugins": [
       "expo-font",
