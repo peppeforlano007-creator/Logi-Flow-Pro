@@ -32,7 +32,7 @@
     "web": {
       "favicon": "./assets/images/newly.png",
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "baseUrl": "/Logi-Flow-Pro"
     },
     "plugins": [

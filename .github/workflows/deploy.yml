@@ -21,7 +21,7 @@ jobs:
         run: bun install
 
       - name: Build web
-        run: bunx expo export -p web --output-dir dist
+        run: bunx expo export --platform web --output-dir dist
         env:
           NODE_ENV: production
 
