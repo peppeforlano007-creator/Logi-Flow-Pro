@@ -7,6 +7,20 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = true;
 
+// On web, replace @react-native-async-storage with a localStorage shim
+// to avoid "window is not defined" during static export
+const asyncStorageWebShim = path.join(__dirname, 'utils', 'async-storage-web.ts');
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && moduleName === '@react-native-async-storage/async-storage') {
+    return { filePath: asyncStorageWebShim, type: 'sourceFile' };
+  }
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
     new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
