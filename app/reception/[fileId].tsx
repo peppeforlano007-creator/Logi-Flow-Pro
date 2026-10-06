@@ -220,6 +220,15 @@ export default function ReceptionScreen() {
           return;
         }
 
+        // Check if already received
+        const alreadyReceived = matched.every(item => item.extra_data?.received === 'true');
+        if (alreadyReceived) {
+          console.log('[Reception] Duplicate scan blocked for code:', code);
+          showToast(`Codice già scansionato e già in fase di lavorazione`, 'error');
+          setProcessingCode(false);
+          return;
+        }
+
         console.log('[Reception] Found', matched.length, 'items for', selectedColumn, ':', code);
 
         // Ensure extra_columns has received / received_at
